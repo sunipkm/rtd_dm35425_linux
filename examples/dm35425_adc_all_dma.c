@@ -1,26 +1,26 @@
 /**
-    @file
+	@file
 
-    @brief
-        Example program which demonstrates the use of the ADC and
-        DMA, using all ADC channels at the same time.
+	@brief
+		Example program which demonstrates the use of the ADC and
+		DMA, using all ADC channels at the same time.
 
-    @verbatim
+	@verbatim
 
-        This example program will collect data from the ADC(s)
-        specified by the user, at the rate specified by the user, and will
-        write the data to files.  It will do this continuously until the
-        user hits CTRL-C (or the filesystem becomes full).
+		This example program will collect data from the ADC(s)
+		specified by the user, at the rate specified by the user, and will
+		write the data to files.  It will do this continuously until the
+		user hits CTRL-C (or the filesystem becomes full).
 
-        Connect the signals of interest to the appropriate ADC Input pins.
+		Connect the signals of interest to the appropriate ADC Input pins.
 
 	Maximum sustainable throughput is HIGHLY system dependent. Higher
 	sample rates might be achievable through better buffer size
 	selection or use of an operating system with realtime features.
 
-    @endverbatim
+	@endverbatim
 
-    @verbatim
+	@verbatim
 	--------------------------------------------------------------------------
 	This file and its contents are copyright (C) RTD Embedded Technologies,
 	Inc.  All Rights Reserved.
@@ -30,9 +30,9 @@
 	(which should be included with this software) or contact RTD Embedded
 	Technologies, Inc.
 	--------------------------------------------------------------------------
-    @endverbatim
+	@endverbatim
 
-    $Id: dm35425_adc_all_dma.c 125638 2020-05-07 20:41:01Z lfrankenfield $
+	$Id: dm35425_adc_all_dma.c 125638 2020-05-07 20:41:01Z lfrankenfield $
 */
 
 #include <stdio.h>
@@ -59,13 +59,13 @@
 /**
  * Default rate to use, if user does not enter one. (Hz)
  */
-#define DEFAULT_RATE		10
+#define DEFAULT_RATE 10
 
 /**
  * Define a default range to use, if the user does not
  * provide one.
  */
-#define DEFAULT_RANGE		DM35425_ADC_RNG_BIPOLAR_5V
+#define DEFAULT_RANGE DM35425_ADC_RNG_BIPOLAR_5V
 
 /**
  * Prefix for files that will be output during example
@@ -126,8 +126,8 @@ static unsigned int next_buffer;
 /**
 *******************************************************************************
 @brief
-    Print information on stderr about how the program is to be used.  After
-    doing so, the program is exited.
+	Print information on stderr about how the program is to be used.  After
+	doing so, the program is exited.
  *******************************************************************************
 */
 
@@ -144,19 +144,19 @@ static void usage(void)
 
 	fprintf(stderr, "\t--minor NUM\n");
 	fprintf(stderr,
-		"\t\tSpecify the minor number (>= 0) of the board to open.  When not specified,\n");
+			"\t\tSpecify the minor number (>= 0) of the board to open.  When not specified,\n");
 	fprintf(stderr, "\t\tthe device file with minor 0 is opened.\n");
 
 	fprintf(stderr, "\t--rate RATE\n");
 	fprintf(stderr,
-		"\t\tUse the specified rate (Hz).  The default is %d.\n",
-		DEFAULT_RATE);
+			"\t\tUse the specified rate (Hz).  The default is %d.\n",
+			DEFAULT_RATE);
 
 	fprintf(stderr, "\t--samples NUM\n");
 	fprintf(stderr,
-		"\t\tStop the example after NUM samples have been collected.  Note that\n");
+			"\t\tStop the example after NUM samples have been collected.  Note that\n");
 	fprintf(stderr,
-		"\t\tthe actual number of samples taken might be larger due to buffer sizes.\n");
+			"\t\tthe actual number of samples taken might be larger due to buffer sizes.\n");
 
 	fprintf(stderr, "\t--range RNG\n");
 	fprintf(stderr, "\t\tUse the specified range of the ADC. \n");
@@ -177,16 +177,16 @@ static void usage(void)
 /**
 *******************************************************************************
 @brief
-    Signal handler for SIGINT Control-C keyboard interrupt.
+	Signal handler for SIGINT Control-C keyboard interrupt.
 
 @param
-    signal_number
+	signal_number
 
-    Signal number passed in from the kernel.
+	Signal number passed in from the kernel.
 
 @warning
-    One must be extremely careful about what functions are called from a signal
-    handler.
+	One must be extremely careful about what functions are called from a signal
+	handler.
  *******************************************************************************
 */
 
@@ -198,32 +198,32 @@ static void sigint_handler(int signal_number)
 /**
 *******************************************************************************
 @brief
-    Output the status of a DMA channel.  This is a helper function to determine
-    the cause of an error when it occurs.
+	Output the status of a DMA channel.  This is a helper function to determine
+	the cause of an error when it occurs.
 
 @param
-    handle
+	handle
 
-    Pointer to the board handle.
-
-@param
-    func_block
-
-    Pointer to the function block containing the DMA channel
+	Pointer to the board handle.
 
 @param
-    channel
+	func_block
 
-    The DMA channel we want the status of.
+	Pointer to the function block containing the DMA channel
+
+@param
+	channel
+
+	The DMA channel we want the status of.
 
  @retval
-    None
+	None
  *******************************************************************************
 */
 
 void output_channel_status(struct DM35425_Board_Descriptor *handle,
-			   const struct DM35425_Function_Block *func_block,
-			   unsigned int channel)
+						   const struct DM35425_Function_Block *func_block,
+						   unsigned int channel)
 {
 	int result;
 	unsigned int current_buffer;
@@ -236,40 +236,39 @@ void output_channel_status(struct DM35425_Board_Descriptor *handle,
 	int status_complete;
 
 	result = DM35425_Dma_Status(handle,
-				    func_block,
-				    channel,
-				    &current_buffer,
-				    &current_count,
-				    &current_action,
-				    &status_overflow,
-				    &status_underflow,
-				    &status_used,
-				    &status_invalid, &status_complete);
+								func_block,
+								channel,
+								&current_buffer,
+								&current_count,
+								&current_action,
+								&status_overflow,
+								&status_underflow,
+								&status_used,
+								&status_invalid, &status_complete);
 
 	check_result(result, "Error getting DMA status");
 
-	printf
-	    ("FB%d Ch%d DMA Status: Current Buffer: %u  Count: %ul  Action: 0x%x  Status: "
-	     "Ov: %d  Un: %d  Used: %d  Inv: %d  Comp: %d\n",
-	     func_block->fb_num, channel, current_buffer, current_count,
-	     current_action, status_overflow, status_underflow, status_used,
-	     status_invalid, status_complete);
+	printf("FB%d Ch%d DMA Status: Current Buffer: %u  Count: %ul  Action: 0x%x  Status: "
+		   "Ov: %d  Un: %d  Used: %d  Inv: %d  Comp: %d\n",
+		   func_block->fb_num, channel, current_buffer, current_count,
+		   current_action, status_overflow, status_underflow, status_used,
+		   status_invalid, status_complete);
 }
 
 /**
 *******************************************************************************
 @brief
-    The interrupt subroutine that will execute when a DMA interrupt occurs.
-    This function will read from the DMA, copying data from the kernel buffers
-    to the user buffers so that we can access the data.
+	The interrupt subroutine that will execute when a DMA interrupt occurs.
+	This function will read from the DMA, copying data from the kernel buffers
+	to the user buffers so that we can access the data.
 
 @param
-    int_info
+	int_info
 
-    A structure containing information about the interrupt.
+	A structure containing information about the interrupt.
 
  @retval
-    None.
+	None.
  *******************************************************************************
 */
 static void ISR(struct dm35425_ioctl_interrupt_info_request int_info)
@@ -280,112 +279,115 @@ static void ISR(struct dm35425_ioctl_interrupt_info_request int_info)
 	int dma_error = 0;
 	unsigned int channel = 0;
 
-	if (int_info.valid_interrupt) {
+	if (int_info.valid_interrupt)
+	{
 
 		// It's a DMA interrupt
-		if (int_info.interrupt_fb < 0) {
+		if (int_info.interrupt_fb < 0)
+		{
 
 			result = DM35425_Dma_Check_Buffer_Used(board,
-							       &my_adc,
-							       channel,
-							       next_buffer,
-							       &buffer_full);
+												   &my_adc,
+												   channel,
+												   next_buffer,
+												   &buffer_full);
 
 			check_result(result, "Error finding used buffer.");
 			check_result(buffer_full == 0,
-				     "DMA Interrupt occurred, but buffer was not full.");
+						 "DMA Interrupt occurred, but buffer was not full.");
 
+			// Read all DMA channels
 			for (channel = 0;
-			     channel < DM35425_NUM_ADC_DMA_CHANNELS;
-			     channel++) {
+				 channel < DM35425_NUM_ADC_DMA_CHANNELS;
+				 channel++)
+			{
 
 				result = DM35425_Dma_Check_For_Error(board,
-								     &my_adc,
-								     channel,
-								     &dma_error);
+													 &my_adc,
+													 channel,
+													 &dma_error);
 
 				check_result(result,
-					     "Error checking for DMA error.");
+							 "Error checking for DMA error.");
 
-				if (dma_error) {
+				if (dma_error)
+				{
 					dma_has_error[channel] = 1;
 					exit_program = 1;
 					return;
 				}
 
 				result = DM35425_Dma_Read(board,
-							  &my_adc,
-							  channel,
-							  next_buffer,
-							  buffer_size_bytes,
-							  local_buffer[channel]
-							  [next_buffer]);
+										  &my_adc,
+										  channel,
+										  next_buffer,
+										  buffer_size_bytes,
+										  local_buffer[channel]
+													  [next_buffer]);
 
 				check_result(result,
-					     "Error getting DMA buffer");
+							 "Error getting DMA buffer");
 
 				result = DM35425_Dma_Reset_Buffer(board,
-								  &my_adc,
-								  channel,
-								  next_buffer);
+												  &my_adc,
+												  channel,
+												  next_buffer);
 
 				check_result(result, "Error resetting buffer");
 
 				result = DM35425_Dma_Clear_Interrupt(board,
-								     &my_adc,
-								     channel,
-								     NO_CLEAR_INTERRUPT,
-								     NO_CLEAR_INTERRUPT,
-								     NO_CLEAR_INTERRUPT,
-								     NO_CLEAR_INTERRUPT,
-								     CLEAR_INTERRUPT);
+													 &my_adc,
+													 channel,
+													 NO_CLEAR_INTERRUPT,
+													 NO_CLEAR_INTERRUPT,
+													 NO_CLEAR_INTERRUPT,
+													 NO_CLEAR_INTERRUPT,
+													 CLEAR_INTERRUPT);
 
 				check_result(result,
-					     "Error clearing DMA interrupt.");
-
+							 "Error clearing DMA interrupt.");
 			}
 
 			next_buffer =
-			    (next_buffer + 1) % my_adc.num_dma_buffers;
+				(next_buffer + 1) % my_adc.num_dma_buffers;
 			buffer_count++;
-
-		} else {
+		}
+		else
+		{
 			printf("*** Process non-DMA interrupt for FB 0x%x.\n",
-			       int_info.interrupt_fb);
+				   int_info.interrupt_fb);
 		}
 
 		result = DM35425_Gbc_Ack_Interrupt(board);
 
 		check_result(result, "Error calling ACK interrupt.");
-
 	}
-
 }
 
 /**
 *******************************************************************************
 @brief
-    The main program.
+	The main program.
 
 @param
-    argument_count
+	argument_count
 
-    Number of args passed on the command line, including the executable name
+	Number of args passed on the command line, including the executable name
 
 @param
-    arguments
+	arguments
 
-    Pointer to array of character strings, which are the args themselves.
-
-@retval
-    0
-
-    Success
+	Pointer to array of character strings, which are the args themselves.
 
 @retval
-    Non-Zero
+	0
 
-    Failure.
+	Success
+
+@retval
+	Non-Zero
+
+	Failure.
 
  *******************************************************************************
 */
@@ -426,30 +428,32 @@ int main(int argument_count, char **arguments)
 		{"samples", 1, 0, SAMPLES_OPTION},
 		{"channel", 1, 0, CHANNELS_OPTION},
 		{"range", 1, 0, RANGE_OPTION},
-		{0, 0, 0, 0}
-	};
+		{0, 0, 0, 0}};
 
 	program_name = arguments[0];
 
 	// Show usage, parse arguments
-	while (1) {
+	while (1)
+	{
 		/*
 		 * Parse the next command line option and any arguments it may require
 		 */
 		status = getopt_long(argument_count,
-				     arguments, "", options, NULL);
+							 arguments, "", options, NULL);
 
 		/*
 		 * If getopt_long() returned -1, then all options have been processed
 		 */
-		if (status == -1) {
+		if (status == -1)
+		{
 			break;
 		}
 
 		/*
 		 * Figure out what getopt_long() found
 		 */
-		switch (status) {
+		switch (status)
+		{
 
 			/*#################################################################
 			   User entered '--help'
@@ -471,10 +475,10 @@ int main(int argument_count, char **arguments)
 			/*
 			 * Catch unsigned long int overflow
 			 */
-			if ((minor == ULONG_MAX)
-			    && (errno == ERANGE)) {
+			if ((minor == ULONG_MAX) && (errno == ERANGE))
+			{
 				error(0, 0,
-				      "ERROR: Device minor number caused numeric overflow");
+					  "ERROR: Device minor number caused numeric overflow");
 				usage();
 			}
 
@@ -483,10 +487,10 @@ int main(int argument_count, char **arguments)
 			 * example "1q", and argument strings which cannot be converted,
 			 * for example "abc1"
 			 */
-			if ((*invalid_char_p != '\0')
-			    || (invalid_char_p == optarg)) {
+			if ((*invalid_char_p != '\0') || (invalid_char_p == optarg))
+			{
 				error(0, 0,
-				      "ERROR: Non-decimal device minor number");
+					  "ERROR: Non-decimal device minor number");
 				usage();
 			}
 
@@ -506,10 +510,10 @@ int main(int argument_count, char **arguments)
 			 * Catch unsigned long int overflow
 			 */
 
-			if ((rate == ULONG_MAX)
-			    && (errno == ERANGE)) {
+			if ((rate == ULONG_MAX) && (errno == ERANGE))
+			{
 				error(0, 0,
-				      "ERROR: Rate number caused numeric overflow");
+					  "ERROR: Rate number caused numeric overflow");
 				usage();
 			}
 
@@ -519,10 +523,10 @@ int main(int argument_count, char **arguments)
 			 * for example "abc1"
 			 */
 
-			if ((*invalid_char_p != '\0')
-			    || (invalid_char_p == optarg)) {
+			if ((*invalid_char_p != '\0') || (invalid_char_p == optarg))
+			{
 				error(0, 0,
-				      "ERROR: Non-decimal rate value entered");
+					  "ERROR: Non-decimal rate value entered");
 				usage();
 			}
 
@@ -537,15 +541,15 @@ int main(int argument_count, char **arguments)
 			 */
 			errno = 0;
 			samples_to_collect =
-			    strtoul(optarg, &invalid_char_p, 10);
+				strtoul(optarg, &invalid_char_p, 10);
 
 			/*
 			 * Catch unsigned long int overflow
 			 */
-			if ((samples_to_collect == ULONG_MAX)
-			    && (errno == ERANGE)) {
+			if ((samples_to_collect == ULONG_MAX) && (errno == ERANGE))
+			{
 				error(0, 0,
-				      "ERROR: Samples number caused numeric overflow");
+					  "ERROR: Samples number caused numeric overflow");
 				usage();
 			}
 
@@ -554,10 +558,10 @@ int main(int argument_count, char **arguments)
 			 * example "1q", and argument strings which cannot be converted,
 			 * for example "abc1"
 			 */
-			if ((*invalid_char_p != '\0')
-			    || (invalid_char_p == optarg)) {
+			if ((*invalid_char_p != '\0') || (invalid_char_p == optarg))
+			{
 				error(0, 0,
-				      "ERROR: Non-decimal samples value entered");
+					  "ERROR: Non-decimal samples value entered");
 				usage();
 			}
 			break;
@@ -566,27 +570,46 @@ int main(int argument_count, char **arguments)
 			   User entered --range option
 			   ################################################################# */
 		case RANGE_OPTION:
-			if (strcmp(optarg, "10B") == 0) {
+			if (strcmp(optarg, "10B") == 0)
+			{
 				range = DM35425_ADC_RNG_BIPOLAR_10V;
-			} else if (strcmp(optarg, "10U") == 0) {
+			}
+			else if (strcmp(optarg, "10U") == 0)
+			{
 				range = DM35425_ADC_RNG_UNIPOLAR_10V;
-			} else if (strcmp(optarg, "5B") == 0) {
+			}
+			else if (strcmp(optarg, "5B") == 0)
+			{
 				range = DM35425_ADC_RNG_BIPOLAR_5V;
-			} else if (strcmp(optarg, "5U") == 0) {
+			}
+			else if (strcmp(optarg, "5U") == 0)
+			{
 				range = DM35425_ADC_RNG_UNIPOLAR_5V;
-			} else if (strcmp(optarg, "2.5B") == 0) {
+			}
+			else if (strcmp(optarg, "2.5B") == 0)
+			{
 				range = DM35425_ADC_RNG_BIPOLAR_2_5V;
-			} else if (strcmp(optarg, "2.5U") == 0) {
+			}
+			else if (strcmp(optarg, "2.5U") == 0)
+			{
 				range = DM35425_ADC_RNG_UNIPOLAR_2_5V;
-			} else if (strcmp(optarg, "1.25U") == 0) {
+			}
+			else if (strcmp(optarg, "1.25U") == 0)
+			{
 				range = DM35425_ADC_RNG_UNIPOLAR_1_25V;
-			} else if (strcmp(optarg, "1.25B") == 0) {
+			}
+			else if (strcmp(optarg, "1.25B") == 0)
+			{
 				range = DM35425_ADC_RNG_BIPOLAR_1_25V;
-			} else if (strcmp(optarg, ".625B") == 0) {
+			}
+			else if (strcmp(optarg, ".625B") == 0)
+			{
 				range = DM35425_ADC_RNG_BIPOLAR_625mV;
-			} else {
+			}
+			else
+			{
 				error(0, 0,
-				      "ERROR: Range and mode entered did not match available options.");
+					  "ERROR: Range and mode entered did not match available options.");
 				usage();
 			}
 
@@ -604,9 +627,9 @@ int main(int argument_count, char **arguments)
 			   ################################################################# */
 		default:
 			error(EXIT_FAILURE,
-			      0,
-			      "ERROR: getopt_long() returned unexpected value %#x",
-			      status);
+				  0,
+				  "ERROR: getopt_long() returned unexpected value %#x",
+				  status);
 			break;
 		}
 	}
@@ -615,11 +638,13 @@ int main(int argument_count, char **arguments)
 	 * Recognize '--help' option before any others
 	 */
 
-	if (help_option_given) {
+	if (help_option_given)
+	{
 		usage();
 	}
 
-	if (rate < 1 || rate > DM35425_ADC_MAX_RATE) {
+	if (rate < 1 || rate > DM35425_ADC_MAX_RATE)
+	{
 		error(0, 0, "Error: Rate given not within range of board.");
 		usage();
 	}
@@ -630,7 +655,8 @@ int main(int argument_count, char **arguments)
 	 * to run at higher rates.
 	 */
 	samples_per_buffer = (rate / 40);
-	if (samples_per_buffer < 20) {
+	if (samples_per_buffer < 20)
+	{
 		samples_per_buffer = 20;
 	}
 
@@ -640,20 +666,23 @@ int main(int argument_count, char **arguments)
 	sigfillset(&(signal_action.sa_mask));
 	signal_action.sa_flags = 0;
 
-	if (sigaction(SIGINT, &signal_action, NULL) < 0) {
+	if (sigaction(SIGINT, &signal_action, NULL) < 0)
+	{
 		error(EXIT_FAILURE, errno, "ERROR: sigaction() FAILED");
 	}
 
-	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++) {
+	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++)
+	{
 		sprintf(fileName, "%s%u%s", DAT_FILE_NAME_PREFIX, channel,
-			DAT_FILE_NAME_SUFFIX);
+				DAT_FILE_NAME_SUFFIX);
 		remove(fileName);
 
 		fp[channel] = fopen(fileName, "w");
 
-		if (fp[channel] == NULL) {
+		if (fp[channel] == NULL)
+		{
 			error(EXIT_FAILURE, errno,
-			      "open() FAILED on output data file.\n");
+				  "open() FAILED on output data file.\n");
 		}
 	}
 
@@ -667,45 +696,46 @@ int main(int argument_count, char **arguments)
 	check_result(result, "Could not reset board");
 	printf("success.\n");
 
-	result = DM35425_Adc_Open(board, ADC_0, &my_adc);
+	result = DM35425_Adc_Open(board, ADC_0, &my_adc); // Initialize my_adc
 
 	check_result(result, "Could not open ADC");
 
 	printf("Found ADC, with %d DMA channels (%d buffers each)\n",
-	       my_adc.num_dma_channels, my_adc.num_dma_buffers);
+		   my_adc.num_dma_channels, my_adc.num_dma_buffers);
 
 	result = DM35425_Adc_Set_Clock_Src(board,
-					   &my_adc, DM35425_CLK_SRC_IMMEDIATE);
+									   &my_adc, DM35425_CLK_SRC_IMMEDIATE);
 
 	check_result(result, "Error setting ADC clock");
 
 	buffer_count = 0;
 	local_buffer_count = 0;
-	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++) {
+	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++)
+	{
 
 		fprintf(stdout, "Initializing DMA Channel %d...", channel);
 		result = DM35425_Dma_Initialize(board,
-						&my_adc,
-						channel,
-						my_adc.num_dma_buffers,
-						buffer_size_bytes);
+										&my_adc,
+										channel,
+										my_adc.num_dma_buffers,
+										buffer_size_bytes);
 
 		check_result(result, "Error initializing DMA");
 
 		result = DM35425_Dma_Setup(board,
-					   &my_adc,
-					   channel,
-					   DM35425_DMA_SETUP_DIRECTION_READ,
-					   NOT_IGNORE_USED);
+								   &my_adc,
+								   channel,
+								   DM35425_DMA_SETUP_DIRECTION_READ,
+								   NOT_IGNORE_USED);
 
 		check_result(result, "Error configuring DMA");
 
 		fprintf(stdout, "Setting DMA Interrupts......");
 		result = DM35425_Dma_Configure_Interrupts(board,
-							  &my_adc,
-							  channel,
-							  INTERRUPT_DISABLE,
-							  ERROR_INTR_DISABLE);
+												  &my_adc,
+												  channel,
+												  INTERRUPT_DISABLE,
+												  ERROR_INTR_DISABLE);
 
 		check_result(result, "Error setting DMA Interrupts");
 		fprintf(stdout, "success!\n");
@@ -713,71 +743,73 @@ int main(int argument_count, char **arguments)
 		/* Although the interrupt bit is going to be set for every buffer,
 		   we're going to enable DMA interrupts only for channel 0
 		 */
-		for (buff = 0; buff < my_adc.num_dma_buffers; buff++) {
+		for (buff = 0; buff < my_adc.num_dma_buffers; buff++)
+		{
 
 			buff_control = DM35425_DMA_BUFFER_CTRL_VALID |
-			    DM35425_DMA_BUFFER_CTRL_INTR;
+						   DM35425_DMA_BUFFER_CTRL_INTR;
 
-			if (buff == (DM35425_NUM_ADC_DMA_BUFFERS - 1)) {
+			if (buff == (DM35425_NUM_ADC_DMA_BUFFERS - 1)) // for the last one enable this to loop back to 0
+			{
 				buff_control |= DM35425_DMA_BUFFER_CTRL_LOOP;
-
 			}
 
 			result = DM35425_Dma_Buffer_Setup(board,
-							  &my_adc,
-							  channel,
-							  buff, buff_control);
+											  &my_adc,
+											  channel,
+											  buff, buff_control);
 
 			check_result(result, "Error setting buffer control.");
 
 			result = DM35425_Dma_Buffer_Status(board,
-							   &my_adc,
-							   channel,
-							   buff,
-							   &buff_status,
-							   &buff_control,
-							   &buff_size);
+											   &my_adc,
+											   channel,
+											   buff,
+											   &buff_status,
+											   &buff_control,
+											   &buff_size);
 
 			check_result(result, "Error getting buffer status.");
 
 			fprintf(stdout,
-				"    Buffer %d: Stat: 0x%x  Ctrl: 0x%x  Size: %d\n",
-				buff, buff_status, buff_control, buff_size);
+					"    Buffer %d: Stat: 0x%x  Ctrl: 0x%x  Size: %d\n",
+					buff, buff_status, buff_control, buff_size);
 		}
 
 		result = DM35425_Adc_Channel_Setup(board,
-						   &my_adc,
-						   channel,
-						   DM35425_ADC_2_FULL_SAMPLE_DELAY,
-						   range,
-						   DM35425_ADC_INPUT_SINGLE_ENDED);
+										   &my_adc,
+										   channel,
+										   DM35425_ADC_2_FULL_SAMPLE_DELAY,
+										   range,
+										   DM35425_ADC_INPUT_SINGLE_ENDED);
 
 		check_result(result, "Error setting up channel.");
 	}
 
 	fprintf(stdout, "Enabling DMA Channel 0 Interrupts......");
 	result = DM35425_Dma_Configure_Interrupts(board,
-						  &my_adc,
-						  CHANNEL_0,
-						  INTERRUPT_ENABLE,
-						  ERROR_INTR_ENABLE);
+											  &my_adc,
+											  CHANNEL_0,
+											  INTERRUPT_ENABLE,
+											  ERROR_INTR_ENABLE);
 
 	check_result(result, "Error setting DMA Interrupts");
 
-	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++) {
+	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++)
+	{
 		// Allocate local memory for data.
 		local_buffer[channel] = (int **)
-		    malloc(sizeof(int *) * my_adc.num_dma_buffers);
+			malloc(sizeof(int *) * my_adc.num_dma_buffers);
 		check_result(local_buffer[channel] == NULL,
-			     "Could not allocate for local buffer");
+					 "Could not allocate for local buffer");
 
-		for (buff = 0; buff < my_adc.num_dma_buffers; buff++) {
+		for (buff = 0; buff < my_adc.num_dma_buffers; buff++)
+		{
 			local_buffer[channel][buff] =
-			    (int *)malloc(buffer_size_bytes);
+				(int *)malloc(buffer_size_bytes);
 
 			check_result(local_buffer[channel][buff] == NULL,
-				     "Could not allocate for local buffer");
-
+						 "Could not allocate for local buffer");
 		}
 	}
 
@@ -786,7 +818,8 @@ int main(int argument_count, char **arguments)
 	check_result(result, "DM35425_General_InstallISR()");
 	fprintf(stdout, "success.\n");
 
-	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++) {
+	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++)
+	{
 		fprintf(stdout, "Starting ADC DMA Channel %d......", channel);
 		result = DM35425_Dma_Start(board, &my_adc, channel);
 
@@ -799,21 +832,21 @@ int main(int argument_count, char **arguments)
 
 	printf("Initializing ADC......");
 	result = DM35425_Adc_Set_Start_Trigger(board,
-					       &my_adc,
-					       DM35425_CLK_SRC_IMMEDIATE);
+										   &my_adc,
+										   DM35425_CLK_SRC_IMMEDIATE);
 	check_result(result, "Error setting start trigger.");
 
 	result = DM35425_Adc_Set_Stop_Trigger(board,
-					      &my_adc, DM35425_CLK_SRC_NEVER);
+										  &my_adc, DM35425_CLK_SRC_NEVER);
 	check_result(result, "Error setting stop trigger.");
 
 	result = DM35425_Adc_Set_Sample_Rate(board,
-					     &(my_adc), rate, &actual_rate);
+										 &(my_adc), rate, &actual_rate);
 
 	check_result(result, "Failed to set sample rate for ADC.");
 	fprintf(stdout,
-		"success.\nRate requested: %d  Actual Rate Achieved: %d\n",
-		rate, actual_rate);
+			"success.\nRate requested: %d  Actual Rate Achieved: %d\n",
+			rate, actual_rate);
 
 	result = DM35425_Adc_Initialize(board, &my_adc);
 
@@ -833,29 +866,34 @@ int main(int argument_count, char **arguments)
 	 * and see if a buffer has been copied from kernel space.  If so, then
 	 * write it out to disk for all channels.
 	 */
-	while (!exit_program && (num_samples_taken[0] < samples_to_collect)) {
+	while (!exit_program && (num_samples_taken[0] < samples_to_collect))
+	{
 
-		if (buffer_count > local_buffer_count) {
+		if (buffer_count > local_buffer_count)
+		{
 
 			// Buffer for Channel 0 is now complete.
 			// Assume other channels will also be complete.
 			buffer_to_get =
-			    local_buffer_count % my_adc.num_dma_buffers;
+				local_buffer_count % my_adc.num_dma_buffers;
 
 			for (channel = 0;
-			     channel < DM35425_NUM_ADC_DMA_CHANNELS;
-			     channel++) {
+				 channel < DM35425_NUM_ADC_DMA_CHANNELS;
+				 channel++)
+			{
 
 				for (index = 0; index < samples_per_buffer;
-				     index++) {
+					 index++)
+				{
 					DM35425_Adc_Sample_To_Volts(range,
-								    local_buffer
-								    [channel]
-								    [buffer_to_get][index], &volt);
+												local_buffer
+													[channel]
+													[buffer_to_get][index],
+												&volt);
 
 					fprintf(fp[channel], "%lu\t%.2f\t",
-						num_samples_taken[channel],
-						volt);
+							num_samples_taken[channel],
+							volt);
 
 					num_samples_taken[channel]++;
 					fprintf(fp[channel], "\n");
@@ -864,45 +902,47 @@ int main(int argument_count, char **arguments)
 				buffers_copied++;
 
 				fprintf(stdout, "Copied %5d buffers.        \r",
-					buffers_copied);
-
+						buffers_copied);
 			}
 			local_buffer_count++;
-		} else {
+		}
+		else
+		{
 			DM35425_Micro_Sleep(100);
 		}
-
 	}
 
-	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++) {
+	for (channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++)
+	{
 
-		if (dma_has_error[channel]) {
+		if (dma_has_error[channel])
+		{
 			output_channel_status(board, &my_adc, channel);
 		}
 
 		result = DM35425_Dma_Configure_Interrupts(board,
-							  &my_adc,
-							  channel,
-							  INTERRUPT_DISABLE,
-							  ERROR_INTR_DISABLE);
+												  &my_adc,
+												  channel,
+												  INTERRUPT_DISABLE,
+												  ERROR_INTR_DISABLE);
 
 		check_result(result, "Error setting DMA Interrupts");
 
-		for (buff = 0; buff < my_adc.num_dma_buffers; buff++) {
+		for (buff = 0; buff < my_adc.num_dma_buffers; buff++)
+		{
 
 			free(local_buffer[channel][buff]);
-
 		}
 
 		free(local_buffer[channel]);
 
 		fclose(fp[channel]);
-
 	}
 
-	if (num_samples_taken[0] >= samples_to_collect) {
+	if (num_samples_taken[0] >= samples_to_collect)
+	{
 		fprintf(stdout, "Took %lu samples (%lu expected)\n",
-			num_samples_taken[0], samples_to_collect);
+				num_samples_taken[0], samples_to_collect);
 	}
 
 	printf("Removing ISR\n");
@@ -917,5 +957,4 @@ int main(int argument_count, char **arguments)
 
 	printf("Example program successfully completed.\n");
 	return 0;
-
 }

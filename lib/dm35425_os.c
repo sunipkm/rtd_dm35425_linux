@@ -39,56 +39,51 @@
 
 #define DEVICE_NAME_PATH_PREFIX "/dev/rtd-dm35425"
 
-
 int DM35425_Dma_Initialize(struct DM35425_Board_Descriptor *handle,
-				const struct DM35425_Function_Block *func_block,
-				unsigned int channel,
-				unsigned int num_buffers,
-				uint32_t buffer_size)
+						   const struct DM35425_Function_Block *func_block,
+						   unsigned int channel,
+						   unsigned int num_buffers,
+						   uint32_t buffer_size)
 {
-
 
 	int result = 0;
 	int buff = 0;
 	union dm35425_ioctl_argument ioctl_request;
 
-
 	/**
 	 * Disable interrupts
 	 */
 	result = DM35425_Dma_Configure_Interrupts(handle,
-						func_block,
-						channel,
-						0,
-						0);
+											  func_block,
+											  channel,
+											  0,
+											  0);
 
 	check_result(result, "Error disabling DMA interrupts.");
 
-
 	result = DM35425_Dma_Clear(handle,
-					func_block,
-					channel);
+							   func_block,
+							   channel);
 
 	check_result(result, "Error clearing DMA.");
 
-
 	result = DM35425_Dma_Clear_Interrupt(handle,
-						func_block,
-						channel,
-						1,
-						1,
-						1,
-						1,
-						1);
+										 func_block,
+										 channel,
+										 1,
+										 1,
+										 1,
+										 1,
+										 1);
 
 	check_result(result, "Error clearing DMA interrupts.");
-
 
 	/**
 	 * Tell the driver to allocate the space required and to
 	 * write the buffer address to the PCI location given.
 	 */
-	for (buff = 0; buff < num_buffers; buff++) {
+	for (buff = 0; buff < num_buffers; buff++)
+	{
 
 		/**
 		 * Allocate buffer
@@ -100,27 +95,26 @@ int DM35425_Dma_Initialize(struct DM35425_Board_Descriptor *handle,
 		ioctl_request.dma.fb_num = func_block->fb_num;
 		ioctl_request.dma.buffer_size = buffer_size;
 		ioctl_request.dma.pci.offset = func_block->dma_channel[channel].buffer_start_offset[buff] +
-						DM35425_OFFSET_DMA_BUFFER_ADDRESS;
+									   DM35425_OFFSET_DMA_BUFFER_ADDRESS;
 		ioctl_request.dma.buffer = buff;
-        	result = DM35425_Dma(handle, &ioctl_request);
+		result = DM35425_Dma(handle, &ioctl_request);
 		check_result(result, "Error initializing DMA via ioctl");
 
 		result = DM35425_Dma_Buffer_Set_Size(handle,
-							func_block,
-							channel,
-							buff,
-							(buffer_size & DM35425_BIT_MASK_DMA_BUFFER_SIZE));
+											 func_block,
+											 channel,
+											 buff,
+											 (buffer_size & DM35425_BIT_MASK_DMA_BUFFER_SIZE));
 
 		check_result(result, "Error setting DMA Buffer size");
-
 
 		/**
 		 * Clear the status
 		 */
 		result = DM35425_Dma_Reset_Buffer(handle,
-							func_block,
-							channel,
-							buff);
+										  func_block,
+										  channel,
+										  buff);
 
 		check_result(result, "Error resetting DMA buffer.");
 
@@ -128,36 +122,30 @@ int DM35425_Dma_Initialize(struct DM35425_Board_Descriptor *handle,
 		 * Clear the buffer control
 		 */
 		result = DM35425_Dma_Buffer_Setup(handle,
-							func_block,
-							channel,
-							buff,
-							DM35425_DMA_BUFFER_CTRL_CLEAR);
+										  func_block,
+										  channel,
+										  buff,
+										  DM35425_DMA_BUFFER_CTRL_CLEAR);
 
 		check_result(result, "Error clearing buffer control register.");
-
-
 	}
 
 	return 0;
-
 }
 
-
-
-int
-DM35425_Dma_Read(struct DM35425_Board_Descriptor *handle,
-				const struct DM35425_Function_Block *func_block,
-				unsigned int channel,
-				unsigned int buffer_to_get,
-				uint32_t buffer_size,
-				void *local_buffer_ptr)
+int DM35425_Dma_Read(struct DM35425_Board_Descriptor *handle,
+					 const struct DM35425_Function_Block *func_block,
+					 unsigned int channel,
+					 unsigned int buffer_to_get,
+					 uint32_t buffer_size,
+					 void *local_buffer_ptr)
 {
-
 
 	union dm35425_ioctl_argument ioctl_request;
 
 	if (channel >= func_block->num_dma_channels ||
-		buffer_to_get >= func_block->num_dma_buffers) {
+		buffer_to_get >= func_block->num_dma_buffers)
+	{
 		errno = EINVAL;
 		return -1;
 	}
@@ -170,25 +158,21 @@ DM35425_Dma_Read(struct DM35425_Board_Descriptor *handle,
 	ioctl_request.dma.buffer = buffer_to_get;
 
 	return DM35425_Dma(handle, &ioctl_request);
-
-
 }
 
-
-int
-DM35425_Dma_Write(struct DM35425_Board_Descriptor *handle,
-				const struct DM35425_Function_Block *func_block,
-				unsigned int channel,
-				unsigned int buffer_to_write_to,
-				uint32_t buffer_size,
-				void *local_buffer_ptr)
+int DM35425_Dma_Write(struct DM35425_Board_Descriptor *handle,
+					  const struct DM35425_Function_Block *func_block,
+					  unsigned int channel,
+					  unsigned int buffer_to_write_to,
+					  uint32_t buffer_size,
+					  void *local_buffer_ptr)
 {
-
 
 	union dm35425_ioctl_argument ioctl_request;
 
 	if (channel >= func_block->num_dma_channels ||
-	    buffer_to_write_to >= func_block->num_dma_buffers) {
+		buffer_to_write_to >= func_block->num_dma_buffers)
+	{
 		errno = EINVAL;
 		return -1;
 	}
@@ -201,10 +185,38 @@ DM35425_Dma_Write(struct DM35425_Board_Descriptor *handle,
 	ioctl_request.dma.buffer = buffer_to_write_to;
 
 	return DM35425_Dma(handle, &ioctl_request);
-
-
 }
 
+int DM35425_General_InstallISR(struct DM35425_Board_Descriptor *handle, DM35425_irq_handler isr_fnct)
+{
+	/*
+	 * Check for ISR already installed
+	 */
+
+	if (handle->isr != NULL)
+	{
+		return -EBUSY;
+	}
+
+	/*
+	 * Set devices isr to the passed userspace isr
+	 */
+
+	handle->isr = isr_fnct;
+
+	/*
+	 * Start the thread to wait for the interrupt
+	 */
+
+	if (pthread_create(&(handle->pid), NULL, DM35425_General_WaitForInterrupt,
+					   handle) != 0)
+	{
+		errno = EFAULT;
+		return -1;
+	}
+
+	return 0;
+}
 
 int DM35425_General_RemoveISR(struct DM35425_Board_Descriptor *handle)
 {
@@ -213,7 +225,8 @@ int DM35425_General_RemoveISR(struct DM35425_Board_Descriptor *handle)
 	 * Check to make sure there exists an ISR to remove
 	 */
 
-	if (!handle->isr) {
+	if (!handle->isr)
+	{
 		return -EFAULT;
 	}
 
@@ -232,7 +245,6 @@ int DM35425_General_RemoveISR(struct DM35425_Board_Descriptor *handle)
 	return pthread_join(handle->pid, NULL);
 }
 
-
 void *DM35425_General_WaitForInterrupt(void *ptr)
 {
 
@@ -240,10 +252,12 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 	fd_set read_fds;
 	int status;
 	struct DM35425_Board_Descriptor *handle;
-	handle = (struct DM35425_Board_Descriptor *) ptr;
+	handle = (struct DM35425_Board_Descriptor *)ptr;
 	union dm35425_ioctl_argument ioctl_arg;
 
-	while (1) {
+	// main loop of thread
+	while (1)
+	{
 
 		/*
 		 * Set up the set of file descriptors that will be watched for input
@@ -268,13 +282,14 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 		 */
 
 		status = select((handle->file_descriptor) + 1,
-				&read_fds, NULL, &exception_fds, NULL);
+						&read_fds, NULL, &exception_fds, NULL);
 
 		/*
 		 * The isr should be a null pointer if RemoveISR has been called
-		 * This checks if the user has asked the thread to quit.
+		 * This checks if the user has asked the thread to quit. (breaks main loop)
 		 */
-		if (handle->isr == NULL) {
+		if (handle->isr == NULL)
+		{
 			break;
 		}
 
@@ -282,18 +297,20 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 		 * Check select() error status
 		 */
 
-		if (status == -1) {
+		if (status == -1)
+		{
 
 			/*
 			 * Some error occurred.
 			 */
 			ioctl_arg.interrupt.error_occurred = 2;
 			ioctl_arg.interrupt.valid_interrupt = 0;
-			(*(handle->isr)) (ioctl_arg.interrupt);
+			(*(handle->isr))(ioctl_arg.interrupt);
 			break;
 		}
 
-		if (status == 0) {
+		if (status == 0)
+		{
 
 			/*
 			 * No file descriptors have data available.  Something is broken in the
@@ -303,7 +320,7 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 			errno = -ENODATA;
 			ioctl_arg.interrupt.error_occurred = 3;
 			ioctl_arg.interrupt.valid_interrupt = 0;
-			(*(handle->isr)) (ioctl_arg.interrupt);
+			(*(handle->isr))(ioctl_arg.interrupt);
 			break;
 		}
 		/*
@@ -311,11 +328,12 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 		 * the device when the driver was loaded.
 		 */
 
-		if (FD_ISSET(handle->file_descriptor, &exception_fds)) {
+		if (FD_ISSET(handle->file_descriptor, &exception_fds))
+		{
 			errno = -EIO;
 			ioctl_arg.interrupt.error_occurred = 4;
 			ioctl_arg.interrupt.valid_interrupt = 0;
-			(*(handle->isr)) (ioctl_arg.interrupt);
+			(*(handle->isr))(ioctl_arg.interrupt);
 			break;
 		}
 
@@ -324,7 +342,8 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 		 * occured.  Check the device file descriptor to see if it is readable.
 		 */
 
-		if (!FD_ISSET(handle->file_descriptor, &read_fds)) {
+		if (!FD_ISSET(handle->file_descriptor, &read_fds))
+		{
 
 			/*
 			 * The device file is not readable.  This means something is broken.
@@ -332,59 +351,63 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 			errno = -ENODATA;
 			ioctl_arg.interrupt.error_occurred = 5;
 			ioctl_arg.interrupt.valid_interrupt = 0;
-			(*(handle->isr)) (ioctl_arg.interrupt);
+			(*(handle->isr))(ioctl_arg.interrupt);
 			break;
 		}
 
 		status = ioctl(handle->file_descriptor, DM35425_IOCTL_INTERRUPT_GET,
-			  &ioctl_arg);
+					   &ioctl_arg);
 
-		if (status != 0) {
+		if (status != 0)
+		{
 			ioctl_arg.interrupt.error_occurred = 6;
 			ioctl_arg.interrupt.valid_interrupt = 0;
-			(*(handle->isr)) (ioctl_arg.interrupt);
+			(*(handle->isr))(ioctl_arg.interrupt);
 			return handle;
 		}
 
 		/*
-         * As an ioctl call can occur, one more check is needed before calling 
-         * the ISR 
-         */
-		if (handle->isr == NULL) {
-            break;
-        }
-		(*(handle->isr)) (ioctl_arg.interrupt);
+		 * As an ioctl call can occur, one more check is needed before calling
+		 * the ISR
+		 */
+		if (handle->isr == NULL)
+		{
+			break;
+		}
+		(*(handle->isr))(ioctl_arg.interrupt);
 
-		while (ioctl_arg.interrupt.interrupts_remaining > 0) {
+		while (ioctl_arg.interrupt.interrupts_remaining > 0)
+		{
 
 			/*
-			* Get Next Status
-			*/
+			 * Get Next Status
+			 */
 
 			status = ioctl(handle->file_descriptor,
-					DM35425_IOCTL_INTERRUPT_GET,
-					&ioctl_arg);
+						   DM35425_IOCTL_INTERRUPT_GET,
+						   &ioctl_arg);
 
-			if (status != 0) {
+			if (status != 0)
+			{
 				ioctl_arg.interrupt.error_occurred = 7;
 				ioctl_arg.interrupt.valid_interrupt = 0;
 				ioctl_arg.interrupt.interrupts_remaining = 0;
-
 			}
 
 			/*
-             * As an ioctl call can occur, one more check is needed before 
-             * calling the ISR 
-             */
-        
-            if (handle->isr == NULL) {
-                break;
-            }
-			
+			 * As an ioctl call can occur, one more check is needed before
+			 * calling the ISR
+			 */
+
+			if (handle->isr == NULL)
+			{
+				break;
+			}
+
 			/*
-			* Call the Interrupt Service Routine and pass through the status
-			*/
-			(*(handle->isr)) (ioctl_arg.interrupt);
+			 * Call the Interrupt Service Routine and pass through the status
+			 */
+			(*(handle->isr))(ioctl_arg.interrupt);
 		}
 	}
 
@@ -395,52 +418,20 @@ void *DM35425_General_WaitForInterrupt(void *ptr)
 	return 0;
 }
 
-
-
-int
-DM35425_General_InstallISR(struct DM35425_Board_Descriptor *handle, void (*isr_fnct))
-{
-	/*
-	 * Check for ISR already installed
-	 */
-
-	if (handle->isr != NULL) {
-		return -EBUSY;
-	}
-
-	/*
-	 * Set devices isr to the passed userspace isr
-	 */
-
-	handle->isr = isr_fnct;
-
-	/*
-	 * Start the thread to wait for the interrupt
-	 */
-
-	if (pthread_create
-		(&(handle->pid), NULL, DM35425_General_WaitForInterrupt,
-		 handle) != 0) {
-		errno = EFAULT;
-		return -1;
-	}
-
-	return 0;
-}
-
-int 
-DM35425_General_SetISRPriority(struct DM35425_Board_Descriptor *handle,
-				   int priority)
+int DM35425_General_SetISRPriority(struct DM35425_Board_Descriptor *handle,
+								   int priority)
 {
 	struct sched_param param;
 
 	param.sched_priority = priority;
-	if (handle->isr == NULL) {
+	if (handle->isr == NULL)
+	{
 		errno = -EFAULT;
 		return -1;
 	}
 
-	if (getuid() != 0) {
+	if (getuid() != 0)
+	{
 		return 0;
 	}
 

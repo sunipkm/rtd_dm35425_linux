@@ -26,6 +26,7 @@
 #define _DM35425_BOARD_OS__H_
 
 #include <pthread.h>
+#include "dm35425_board_access_structs.h"
 
 // This forward declaration is made so that board_access.h 
 // does not need to be included, which would causes circular dependencies.
@@ -41,12 +42,18 @@ extern "C" {
  */
 
 /**
+ * @brief Type describing the interrupt service routine used called upon installation
+ * using {@link DM35425_General_InstallISR}.
+ * 
+ */
+typedef void (*DM35425_irq_handler)(struct dm35425_ioctl_interrupt_info_request);
+
+/**
   @brief
   DM35425 board descriptor.  This structure holds information about
   the board as a whole.  It holds the file descriptor and ISR callback
   function, if applicable.
  */
-
 struct DM35425_Board_Descriptor {
 
 	/**
@@ -57,14 +64,19 @@ struct DM35425_Board_Descriptor {
 	/**
 	 * Function pointer to the user ISR callback function.
 	 */
-	void (*isr) ();
+	DM35425_irq_handler isr;
 
 	/**
 	 * Process ID of the child process which will monitor DMA done interrupts.
 	 */
 	pthread_t pid;
-};
 
+    /**
+     * Flag indicates whether this is part of a multi-board ISR system.
+     * 
+     */
+    int multiboard_isr;
+};
 
 /**
 *******************************************************************************
@@ -334,7 +346,7 @@ void *DM35425_General_WaitForInterrupt(void *ptr);
             EFAULT	Could not create thread.
  */
 int
-DM35425_General_InstallISR(struct DM35425_Board_Descriptor *handle, void (*isr_fnct));
+DM35425_General_InstallISR(struct DM35425_Board_Descriptor *handle, DM35425_irq_handler isr_fnct);
 
 
 /**
@@ -368,8 +380,8 @@ DM35425_General_InstallISR(struct DM35425_Board_Descriptor *handle, void (*isr_f
         @arg \c
             EFAULT	User ISR did not exist.
  */
-	int DM35425_General_SetISRPriority(struct DM35425_Board_Descriptor
-					   *handle, int priority);
+int DM35425_General_SetISRPriority(struct DM35425_Board_Descriptor
+					                        *handle, int priority);
 
 /**
  * @} DM35425_Board_Access_Library
