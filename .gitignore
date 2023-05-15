@@ -1,0 +1,28 @@
+# Ignore all
+**/*
+# Add driver
+!driver/
+!driver/*.c
+!driver/*.h
+!driver/Makefile
+# Remove mod.c from driver
+driver/*.mod.c
+# Add lib
+!lib/
+!lib/*.c
+!lib/*.h
+!lib/Makefile
+# Add include
+!include/
+!include/*.h
+# Add examples
+!examples/
+!examples/*.c
+!examples/Makefile
+!examples/plot_adc_dma
+# Files in root
+!.gitignore
+!CHANGES.TXT
+!*.pdf
+!LICENSE*.TXT
+!README.TXT

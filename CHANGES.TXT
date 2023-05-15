@@ -1,0 +1,54 @@
+Change log for SWP-700010163 rev D
+
+Linux Software (DM35425)
+
+Copyright (C) RTD Embedded Technologies, Inc.  All Rights Reserved.
+
+
+v01.00.00 (rev A)   8/7/2014  RGG
+-----------------------------------
+- Initial version
+
+
+v02.00.00 (rev B)   3/20/2016  RGG
+-----------------------------------
+- Explicitly calling pci_set_master in driver to allow DMA, as some
+  UEFI BIOS do not set this in PCI space.
+- Removed library function _Find_Used_Buffer because it had some inherent flaws
+  and in very remote cases could fail.  The user is now responsible to keep
+  track of what buffer is next.  All examples using DMA have been updated to
+  demonstrate how to do this.
+- Changed method in library for setting sample/conversion rate.  It now gets the 
+  system clock from another library call (which constrains it) instead of reading
+  it directly.  This solves a problem where consecutive calls to set the same
+  sample rate was resulting in different rates for different function blocks.
+- Added adc_fifo examples to show using the FIFO for data transfer without DMA.
+- Added adc_all_dma, showing use of all of the ADC channels simultaneously.
+- Removed library function for setting ISR priority.  Using it required being root,
+  and it's not actually needed anyway.
+  
+
+v03.00.00 (rev C)    05/16/2017     RGG
+---------------------------------------
+- Added revision info from GBC registers to list_fb example output.
+- DMA Buffer setup library call changed.  It now takes a single unsigned
+  8-bit value for the register instead of booleans for every bit.
+- Dma Initialize and other functions moved out of DMA library and into 
+  os-specific library.
+- Added reference count to driver.  This prevents the device file from being
+  opened while already held open by another program.
+- All instances of CLK_SRC_GBL have been changed to CLK_BUS for clarity.
+- Removed setting rate in _dac example, as it is not needed.
+- Example program adc_continuous_dma did not work correctly.
+
+
+v03.00.01 (rev D)  03/05/2020  LRF
+-----------------------------------
+- Added Support for the Linux 5.0 Kernel Module make.
+- Added support for 5.0+ kernel module dma functions.  
+- Added support for 5.6+ Kernel, Removed the ioremap_nocache(...) and replaced with
+its nondeprecated version ioremap(...) that accomplishes the same thing.
+
+v03.00.01 (rev D1) 05/15/2023 SKM
+-----------------------------------
+- Git-ified the repository.
