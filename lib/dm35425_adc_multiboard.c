@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "dm35425_multiboard.h"
+#include "dm35425_adc_multiboard.h"
 #include "dm35425_ioctl.h"
 
 int DM35425_Multiboard_Init(struct DM35425_Multiboard_Descriptor **mbd, int num_boards, ...)
@@ -87,6 +87,9 @@ int DM35425_Multiboard_Destroy(struct DM35425_Multiboard_Descriptor *mbd)
     {
         mbd->boards[i]->multiboard_isr = 0;
     }
+    free(mbd->boards);
+    free(mbd);
+    return 0;
 }
 
 struct DM35425_Multiboard_ThreadArg {

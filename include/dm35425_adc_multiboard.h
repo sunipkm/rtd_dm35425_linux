@@ -2,7 +2,7 @@
  * @file dm35425_multiboard.h
  * @author Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
  * @brief Function declarations for the DM35425 that are Linux specific and
- * provides single ISR functionality for multiple boards.
+ * provides single ISR functionality for ADCs on multiple boards.
  * @version 0.1
  * @date 2023-05-15
  * 
@@ -10,8 +10,8 @@
  * 
  */
 
-#ifndef _DM35425_BOARD_MULTIBOARD__H_
-#define _DM35425_BOARD_MULTIBOARD__H_
+#ifndef _DM35425_BOARD_ADC_MULTIBOARD__H_
+#define _DM35425_BOARD_ADC_MULTIBOARD__H_
 
 #include <stdarg.h>
 #include <signal.h>
@@ -42,4 +42,4 @@ int DM35425_Multiboard_Init(struct DM35425_Multiboard_Descriptor _Nullable **mbd
 
 int DM35425_Multiboard_Destroy(struct DM35425_Multiboard_Descriptor _Nonnull *mbd);
 
-#endif // _DM35425_BOARD_MULTIBOARD__H_
+#endif // _DM35425_BOARD_ADC_MULTIBOARD__H_
