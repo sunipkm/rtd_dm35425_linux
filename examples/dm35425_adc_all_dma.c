@@ -256,6 +256,23 @@ void output_channel_status(struct DM35425_Board_Descriptor *handle,
 }
 
 /**
+ * @fn timespec_diff(struct timespec *, struct timespec *, struct timespec *)
+ * @brief Compute the diff of two timespecs, that is a - b = result.
+ * @param a the minuend
+ * @param b the subtrahend
+ * @param result a - b
+ */
+static inline void timespec_diff(struct timespec *a, struct timespec *b,
+    struct timespec *result) {
+    result->tv_sec  = a->tv_sec  - b->tv_sec;
+    result->tv_nsec = a->tv_nsec - b->tv_nsec;
+    if (result->tv_nsec < 0) {
+        --result->tv_sec;
+        result->tv_nsec += 1000000000L;
+    }
+}
+
+/**
 *******************************************************************************
 @brief
 	The interrupt subroutine that will execute when a DMA interrupt occurs.
@@ -278,6 +295,11 @@ static void ISR(struct dm35425_ioctl_interrupt_info_request int_info)
 	int buffer_full = 0;
 	int dma_error = 0;
 	unsigned int channel = 0;
+	static int isr_call_count = 0;
+	static struct timespec start;
+	struct timespec now;
+	struct timespec end;
+	struct timespec delta;
 
 	if (int_info.valid_interrupt)
 	{
@@ -295,7 +317,18 @@ static void ISR(struct dm35425_ioctl_interrupt_info_request int_info)
 			check_result(result, "Error finding used buffer.");
 			check_result(buffer_full == 0,
 						 "DMA Interrupt occurred, but buffer was not full.");
-
+			
+			if (!isr_call_count)
+			{
+				clock_gettime(CLOCK_MONOTONIC, &start);
+			}
+			else
+			{
+				clock_gettime(CLOCK_MONOTONIC, &now);
+				timespec_diff(&now, &start, &delta);
+				printf("ISR %d: %lu.%09lu s (bw/calls)", isr_call_count, delta.tv_sec, delta.tv_nsec);
+			}
+			
 			// Read all DMA channels
 			for (channel = 0;
 				 channel < DM35425_NUM_ADC_DMA_CHANNELS;
@@ -351,6 +384,14 @@ static void ISR(struct dm35425_ioctl_interrupt_info_request int_info)
 			next_buffer =
 				(next_buffer + 1) % my_adc.num_dma_buffers;
 			buffer_count++;
+			
+			if (isr_call_count)
+			{
+				clock_gettime(CLOCK_MONOTONIC, &end);
+				timespec_diff(&end, &now, &delta);
+				printf(" %lu.%09lu s (DMA)\n", delta.tv_sec, delta.tv_nsec);
+			}
+			isr_call_count++;
 		}
 		else
 		{
@@ -655,9 +696,9 @@ int main(int argument_count, char **arguments)
 	 * to run at higher rates.
 	 */
 	samples_per_buffer = (rate / 40);
-	if (samples_per_buffer < 20)
+	if (samples_per_buffer < 10)
 	{
-		samples_per_buffer = 20;
+		samples_per_buffer = 10;
 	}
 
 	buffer_size_bytes = samples_per_buffer * sizeof(int);
@@ -901,8 +942,8 @@ int main(int argument_count, char **arguments)
 
 				buffers_copied++;
 
-				fprintf(stdout, "Copied %5d buffers.        \r",
-						buffers_copied);
+				// fprintf(stdout, "Copied %5d buffers.        \r",
+				// 		buffers_copied);
 			}
 			local_buffer_count++;
 		}

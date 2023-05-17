@@ -34,6 +34,10 @@
 
 typedef void (*DM35425_Multiboard_ISR)(int, struct DM35425_Board_Descriptor **, void *);
 
+/**
+ * @brief ADC DMA Descriptor (combines all necessary structures and fields to interact with ADC channels in one structure.)
+ * 
+ */
 struct DM35425_ADCDMA_Descriptor 
 {
     struct DM35425_Board_Descriptor *board; // board descriptor
