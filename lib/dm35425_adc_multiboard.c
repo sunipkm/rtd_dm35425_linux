@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 
 #include "dm35425_adc_multiboard.h"
 #include "dm35425_ioctl.h"
@@ -24,8 +25,20 @@
         fprintf(stderr, "%s:%d:%s(): " fmt "\n", __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
         fflush(stderr);                                                                        \
     }
+#define MULTIBRD_DBG_INFO_NONL(fmt, ...)                                                  \
+    {                                                                                     \
+        fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        fflush(stderr);                                                                   \
+    }
+#define MULTIBRD_DBG_INFO_NONE(fmt, ...)     \
+    {                                        \
+        fprintf(stderr, fmt, ##__VA_ARGS__); \
+        fflush(stderr);                      \
+    }
 #else
 #define MULTIBRD_DBG_INFO(fmt, ...)
+#define MULTIBRD_DBG_INFO_NONL(fmt, ...)
+#define MULTIBRD_DBG_INFO_NONE(fmt, ...)
 #endif
 
 #if (MULTIBRD_DBG_LVL >= 2)
@@ -56,10 +69,12 @@
  * @param result a - b
  */
 static inline void timespec_diff(struct timespec *a, struct timespec *b,
-    struct timespec *result) {
-    result->tv_sec  = a->tv_sec  - b->tv_sec;
+                                 struct timespec *result)
+{
+    result->tv_sec = a->tv_sec - b->tv_sec;
     result->tv_nsec = a->tv_nsec - b->tv_nsec;
-    if (result->tv_nsec < 0) {
+    if (result->tv_nsec < 0)
+    {
         --result->tv_sec;
         result->tv_nsec += 1000000000L;
     }
@@ -244,7 +259,7 @@ int DM35425_ADCDMA_Configure_ADC(struct DM35425_ADCDMA_Descriptor *handle, uint3
             }
             else
             {
-                MULTIBRD_DBG_INFO("DMA buffer %d status for channel %d: buff_stat = 0x%x, buff_ctrl = 0x%x, buff_sz = %d", buff, channel, buff_stat, buff_ctrl, buff_sz);
+                MULTIBRD_DBG_INFO("Board (%p) DMA buffer %d status for channel %d: buff_stat = 0x%x, buff_ctrl = 0x%x, buff_sz = %d", board, buff, channel, buff_stat, buff_ctrl, buff_sz);
             }
         }
         result = DM35425_Adc_Channel_Setup(board, fb, channel, delay, input_mode, range); // setup ADC channel
@@ -288,6 +303,7 @@ int DM35425_ADCDMA_Configure_ADC(struct DM35425_ADCDMA_Descriptor *handle, uint3
     handle->input_mode = input_mode;
     handle->range = range;
     handle->rate = rate;
+    handle->buf_ct = samples_per_buf;
     return 0;
 }
 
@@ -326,6 +342,14 @@ int DM35425_ADC_Multiboard_Init(struct DM35425_Multiboard_Descriptor **_mbd, int
 
     memset(boards, 0x00, sizeof(struct DM35425_ADCDMA_Descriptor *) * num_boards); // zero out memory
 
+    struct DM35425_ADCDMA_Readout *readouts = (struct DM35425_ADCDMA_Readout *)malloc(sizeof(struct DM35425_ADCDMA_Readout) * num_boards); // allocate num_boards readout structs
+
+    if (readouts == NULL)
+    {
+        errno = ENOMEM;
+        goto errored_boards;
+    }
+
     boards[0] = first_board;
     for (int i = 1; i < num_boards; i++) // itreate over and copy ptrs to each board descriptor
     {
@@ -343,6 +367,7 @@ int DM35425_ADC_Multiboard_Init(struct DM35425_Multiboard_Descriptor **_mbd, int
 
     mbd->boards = boards;         // copy over boards
     mbd->num_boards = num_boards; // copy over num_boards
+    mbd->readouts = readouts;     // copy over readouts
     *_mbd = mbd;
 
     return 0;
@@ -370,7 +395,7 @@ int DM35425_ADC_Multiboard_Destroy(struct DM35425_Multiboard_Descriptor *mbd)
     return 0;
 }
 
-int DM35425_ADC_Multiboard_RemoveISR(struct DM35425_Multiboard_Descriptor * _Nonnull mbd)
+int DM35425_ADC_Multiboard_RemoveISR(struct DM35425_Multiboard_Descriptor *_Nonnull mbd)
 {
     if (mbd == NULL)
     {
@@ -387,14 +412,16 @@ int DM35425_ADC_Multiboard_RemoveISR(struct DM35425_Multiboard_Descriptor * _Non
 
     if (mbd->pid) // pthread was not joined already
     {
+        MULTIBRD_DBG_INFO("Joining thread for multiboard ISR: %p", (void *)mbd->pid);
         int rc = pthread_join(mbd->pid, NULL);
         if (rc != 0)
         {
-            MULTIBRD_DBG_ERR("Failed to join thread for multiboard ISR");
+            MULTIBRD_DBG_ERR("Failed to join thread for multiboard ISR: %d", rc);
             errno = rc;
             return -1;
         }
     }
+    mbd->pid = 0; // set pid to 0 if called again
     return 0;
 }
 
@@ -409,20 +436,20 @@ static void *_start_adc_fcn(void *arg)
     if (result != 0)
     {
         MULTIBRD_DBG_ERR("Board %p: Failed to initialize ADC.", board);
-        return (void *) 1;
+        return (void *)1;
     }
 
     result = DM35425_Adc_Start(board, fb);
     if (result != 0)
     {
         MULTIBRD_DBG_ERR("Board %p: Failed to start ADC.", board);
-        return (void *) 1;
+        return (void *)1;
     }
     adc->started = true;
     return NULL;
 }
 
-int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _Nonnull mbd, DM35425_Multiboard_ISR isr, void *user_data, bool block)
+int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor *_Nonnull mbd, DM35425_Multiboard_ISR isr, void *user_data, bool block)
 {
     if (mbd == NULL)
     {
@@ -439,20 +466,23 @@ int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _No
     mbd->isr = isr;
     mbd->user_data = user_data;
 
-    pthread_t *trig_thr = (pthread_t *) malloc(sizeof(pthread_t) * mbd->num_boards);
+    pthread_t *trig_thr = (pthread_t *)malloc(sizeof(pthread_t) * mbd->num_boards);
     if (trig_thr == NULL)
     {
         MULTIBRD_DBG_ERR("Failed to allocate memory for trigger threads");
         return -1;
     }
 
-    int rc = pthread_create(&(mbd->pid), NULL, DM35425_Multiboard_WaitForIRQ, (void *) mbd);
+    pthread_t pid = 0;
+    int rc = pthread_create(&pid, NULL, DM35425_Multiboard_WaitForIRQ, (void *)mbd);
     if (rc != 0)
     {
         MULTIBRD_DBG_ERR("Failed to create thread for multiboard ISR");
         errno = rc;
         goto clean_pthread;
     }
+    mbd->pid = pid;
+    MULTIBRD_DBG_INFO("Created thread for multiboard ISR: %p", (void *)mbd->pid);
     // Here we need to start the ADCs etc
     for (int idx = 0; idx < mbd->num_boards; idx++)
     {
@@ -472,7 +502,7 @@ int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _No
             handle->num_samples_taken[channel] = 0;
             MULTIBRD_DBG_INFO("Started DMA for board %d (%p) channel %d", idx, board, channel);
         }
-        
+
         result = DM35425_Adc_Set_Start_Trigger(board, fb, DM35425_CLK_SRC_IMMEDIATE);
         if (result != 0)
         {
@@ -496,7 +526,7 @@ int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _No
         MULTIBRD_DBG_INFO("Board %d (%p): Requested rate %u, achieved %u.", idx, board, handle->rate, handle->actual_rate);
 
         // start threads to trigger the ADCs
-        rc = pthread_create(&(trig_thr[idx]), NULL, _start_adc_fcn, (void *) handle);
+        rc = pthread_create(&(trig_thr[idx]), NULL, _start_adc_fcn, (void *)handle);
         if (rc != 0)
         {
             MULTIBRD_DBG_ERR("Failed to trigger ADC start for board %d (%p)", idx, board);
@@ -504,13 +534,13 @@ int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _No
             goto errored;
         }
     }
-    
+
     // if we are here, ADC start was triggered
     bool started = true;
     for (int idx = 0; idx < mbd->num_boards; idx++)
     {
-        int res = 0;
-        pthread_join(trig_thr[idx], &res);
+        void *res = NULL;
+        pthread_join(trig_thr[idx], (void **)&res);
         if (res != 0)
         {
             MULTIBRD_DBG_ERR("Failed to start ADC for board %d (%p)", idx, mbd->boards[idx]->board);
@@ -559,6 +589,14 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
     struct DM35425_Multiboard_Descriptor *mbd = ptr;
     void *user_data = mbd->user_data;
 
+#if MULTIBRD_DBG_LVL >= 3
+    static int isr_call_count = 0;
+    static struct timespec start;
+    struct timespec lstart = {0, 0};
+    struct timespec now;
+    struct timespec delta;
+#endif // MULTIBRD_DBG_LVL >= 3
+
     float ***voltages = (float ***)malloc(sizeof(float *) * mbd->num_boards);
     if (voltages == NULL)
     {
@@ -584,13 +622,32 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                 errno = ENOMEM;
                 return NULL;
             }
+            memset(voltages[i][j], 0, sizeof(float) * (mbd->boards[i]->buf_sz / sizeof(int))); // zero out the memory
         }
+        mbd->readouts[i].num_channels = DM35425_NUM_ADC_DMA_CHANNELS; // TODO: Change to actual number of channels
+        mbd->readouts[i].num_samples = mbd->boards[i]->buf_ct;
+        mbd->readouts[i].voltages = voltages[i];
     }
 
     while (!mbd->done)
     {
         bool no_error = true;
         int avail_irq = 0;
+
+#if MULTIBRD_DBG_LVL >= 3
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        if (!isr_call_count)
+        {
+            lstart = start;
+        }
+        else
+        {
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            timespec_diff(&start, &lstart, &delta);
+            MULTIBRD_DBG_INFO_NONE("\n");
+            MULTIBRD_DBG_INFO("DMA waiting to select (%d): %ld.%09ld s (since first)\n", isr_call_count, delta.tv_sec, delta.tv_nsec);
+        }
+#endif // MULTIBRD_DBG_LVL >= 3
 
         for (int i = 0; i < mbd->num_boards && !mbd->done; i++)
         {
@@ -602,10 +659,10 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
 
             FD_ZERO(&read_fds);
             FD_ZERO(&exception_fds);
-            for (int i = 0; i < mbd->num_boards; i++)
+            for (int j = 0; j < mbd->num_boards; j++)
             {
-                FD_SET(mbd->boards[i]->board->file_descriptor, &read_fds);
-                FD_SET(mbd->boards[i]->board->file_descriptor, &exception_fds);
+                FD_SET(mbd->boards[j]->board->file_descriptor, &read_fds);
+                FD_SET(mbd->boards[j]->board->file_descriptor, &exception_fds);
             }
 
             /*
@@ -678,7 +735,10 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                 mbd->done = 1;
                 break;
             }
-
+#if MULTIBRD_DBG_LVL >= 3
+            struct timespec tv_s;
+            clock_gettime(CLOCK_MONOTONIC, &tv_s);
+#endif         // MULTIBRD_DBG_LVL >= 3
             do // exhaust all available IRQs
             {
                 status = ioctl(mbd->boards[i]->board->file_descriptor, DM35425_IOCTL_INTERRUPT_GET,
@@ -703,9 +763,21 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                     break;
                 }
             } while (ioctl_arg.interrupt.interrupts_remaining > 0); // exhaust all the pending interrupts
+#if MULTIBRD_DBG_LVL >= 3
+            struct timespec tv_e;
+            clock_gettime(CLOCK_MONOTONIC, &tv_e);
+            timespec_diff(&tv_e, &tv_s, &delta);
+            MULTIBRD_DBG_INFO("DMA waiting to read (%d) %d: %ld.%09ld s (after select)", i, isr_call_count, delta.tv_sec, delta.tv_nsec);
+#endif // MULTIBRD_DBG_LVL >= 3
             if (no_error)
                 avail_irq++;
         }
+        
+        if (mbd->done || mbd->isr == NULL)
+        {
+            break;
+        }
+
         if (avail_irq != mbd->num_boards && !no_error) // back to top of loop if we don't have all the devices ready, this way the slowest device triggers the ISR
         {
             continue;
@@ -715,10 +787,23 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
         {
             DM35425_Convert_ADC(mbd->boards[i], voltages[i]);
         }
-        // TODO: Call ISR
+#if MULTIBRD_DBG_LVL >= 3
+        if (isr_call_count)
+        {
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            // start = now;
+            timespec_diff(&now, &start, &delta);
+            MULTIBRD_DBG_INFO_NONE("\n");
+            MULTIBRD_DBG_INFO("DMA calling ISR %d: %ld.%09ld s (since loop)", isr_call_count, delta.tv_sec, delta.tv_nsec);
+            timespec_diff(&now, &lstart, &delta);
+            MULTIBRD_DBG_INFO("DMA calling ISR %d: %ld.%09ld s (since start)\n", isr_call_count, delta.tv_sec, delta.tv_nsec);
+        }
+        isr_call_count++;
+#endif // MULTIBRD_DBG_LVL >= 3
+       // TODO: Call ISR
         if (mbd->isr != NULL)
         {
-            mbd->isr(mbd->num_boards, voltages, user_data);
+            mbd->isr(mbd->num_boards, mbd->readouts, user_data);
         }
         else
         {
@@ -746,9 +831,10 @@ static void DM35425_Convert_ADC(struct DM35425_ADCDMA_Descriptor *handle, float 
     int buf_idx = handle->next_buf - 1 < 0 ? fb->num_dma_buffers - 1 : handle->next_buf - 1;
     for (int channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++)
     {
+        int dchannel = handle->input_mode == DM35425_ADC_INPUT_DIFFERENTIAL ? channel % 8 + (channel / 16) * 8 : channel;
         for (int i = 0; i < num_samples; i++)
         {
-            DM35425_Adc_Sample_To_Volts(handle->range, handle->local_buf[channel][buf_idx][i], &voltages[channel][i]);
+            DM35425_Adc_Sample_To_Volts(handle->range, handle->local_buf[channel][buf_idx][i], &voltages[dchannel][i]);
         }
     }
 }
@@ -759,14 +845,6 @@ static int DM35425_Read_Out_ADC(struct DM35425_ADCDMA_Descriptor *handle, struct
     int buffer_full = 0;
     int dma_error = 0;
     unsigned int channel = 0;
-
-#if MULTIBRD_DBG_LVL >= 3
-    static int isr_call_count = 0;
-    static struct timespec start;
-    struct timespec now;
-    struct timespec end;
-    struct timespec delta;
-#endif // MULTIBRD_DBG_LVL >= 3
 
     struct DM35425_Board_Descriptor *board = handle->board;
     struct DM35425_Function_Block *fb = handle->fb;
@@ -794,19 +872,6 @@ static int DM35425_Read_Out_ADC(struct DM35425_ADCDMA_Descriptor *handle, struct
                 MULTIBRD_DBG_ERR("Board %p: DMA Interrupt occurred, but buffer was not full.", board);
                 return -DM35425_ERROR_BUFFER_NOT_FULL;
             }
-
-#if MULTIBRD_DBG_LVL >= 3
-            if (!isr_call_count)
-            {
-                clock_gettime(CLOCK_MONOTONIC, &start);
-            }
-            else
-            {
-                clock_gettime(CLOCK_MONOTONIC, &now);
-                timespec_diff(&now, &start, &delta);
-                MULTIBRD_DBG_INFO("DMA Readout start (%p) %d: %ld.%09ld s (bw/calls)", board, isr_call_count, delta.tv_sec, delta.tv_nsec);
-            }
-#endif // MULTIBRD_DBG_LVL >= 3
 
             // Read all DMA channels
             for (channel = 0;
@@ -873,16 +938,6 @@ static int DM35425_Read_Out_ADC(struct DM35425_ADCDMA_Descriptor *handle, struct
             }
 
             handle->next_buf = (handle->next_buf + 1) % fb->num_dma_buffers;
-
-#if MULTIBRD_DBG_LVL >= 3
-            if (isr_call_count)
-            {
-                clock_gettime(CLOCK_MONOTONIC, &end);
-                timespec_diff(&end, &now, &delta);
-                MULTIBRD_DBG_INFO("DMA Readout end (%p) %d: %ld.%09ld s (DMA)\n", board, isr_call_count, delta.tv_sec, delta.tv_nsec);
-            }
-            isr_call_count++;
-#endif // MULTIBRD_DBG_LVL >= 3
         }
         else
         {

@@ -34,7 +34,13 @@
 #define MULTIBRD_DBG_LVL 3
 #endif
 
-typedef void (*DM35425_Multiboard_ISR)(int, float *** _Nullable, void * _Nullable);
+struct DM35425_ADCDMA_Readout {
+    int num_channels;
+    size_t num_samples;  
+    float **voltages;
+};
+
+typedef void (*DM35425_Multiboard_ISR)(int, struct DM35425_ADCDMA_Readout * _Nullable, void * _Nullable);
 
 /**
  * @brief ADC DMA Descriptor (combines all necessary structures and fields to interact with ADC channels in one structure.)
@@ -69,6 +75,7 @@ struct DM35425_Multiboard_Descriptor {
     DM35425_Multiboard_ISR isr;
     void *user_data;
     struct DM35425_ADCDMA_Descriptor **boards;
+    struct DM35425_ADCDMA_Readout *readouts;
     pthread_t pid;
 };
 
