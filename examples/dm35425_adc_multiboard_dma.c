@@ -69,7 +69,8 @@ void ISR(int num_boards, struct DM35425_ADCDMA_Readout *readouts, void *user_dat
     else
     {
         lstart = now;
-        printf("Callback (0): 0.0 s\n");
+        last = now;
+        printf("Callback (1): 0.0 s\n");
     }
     call_ct++;
 }
