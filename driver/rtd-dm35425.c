@@ -2176,11 +2176,10 @@ dm35425_probe_devices(uint32_t *device_count,
 		   != NULL) {
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION( 2, 6, 12 ))
-		if (pci_match_device(dm35425_pci_device_table, pci_device) == NULL)
+		if (pci_match_device(dm35425_pci_device_table, pci_device) == NULL) {
 #else
-		if (pci_match_id(dm35425_pci_device_table, pci_device) == NULL) 
+		if (pci_match_id(dm35425_pci_device_table, pci_device) == NULL) {
 #endif
-		{
 			continue;
 		}
 
@@ -2226,11 +2225,10 @@ dm35425_probe_devices(uint32_t *device_count,
 		 */
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION( 2, 6, 12 ))
-		if (pci_match_device(dm35425_pci_device_table, pci_device) == NULL)
+		if (pci_match_device(dm35425_pci_device_table, pci_device) == NULL) {
 #else
-		if (pci_match_id(dm35425_pci_device_table, pci_device) == NULL)
+		if (pci_match_id(dm35425_pci_device_table, pci_device) == NULL) {
 #endif
-		{
 			continue;
 		}
 

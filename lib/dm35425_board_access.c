@@ -85,17 +85,6 @@ int DM35425_Board_Close(struct DM35425_Board_Descriptor *handle)
 		return -1;
 	}
 
-	if (handle->isr != NULL) // https://stackoverflow.com/questions/543541/what-does-select2-do-if-you-close2-a-file-descriptor-in-a-separate-thread#:~:text=In%20Linux's%20case%2C%20calling%20close,the%20select(2)%20returns.
-	{
-		DM35425_General_RemoveISR(handle);
-	}
-
-	if (handle->multiboard_isr)
-	{
-		ioctl(handle->file_descriptor, DM35425_IOCTL_WAKEUP);
-		handle->multiboard_isr = 0;
-	}
-
 	if (close(handle->file_descriptor) == -1) {
 		free(handle);
 		return -1;

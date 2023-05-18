@@ -52,3 +52,7 @@ its nondeprecated version ioremap(...) that accomplishes the same thing.
 v03.00.01 (rev D1) 05/15/2023 SKM
 -----------------------------------
 - Git-ified the repository.
+
+v03.01.00 (rev E) 05/18/2023 SKM
+-----------------------------------
+- Added ADC Multi-board Readout API
