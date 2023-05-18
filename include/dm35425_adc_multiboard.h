@@ -31,7 +31,7 @@
 #endif
 
 #ifndef MULTIBRD_DBG_LVL
-#define MULTIBRD_DBG_LVL 3
+#define MULTIBRD_DBG_LVL 1
 #endif
 
 struct DM35425_ADCDMA_Readout {
