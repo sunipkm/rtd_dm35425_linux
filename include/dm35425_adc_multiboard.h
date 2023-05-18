@@ -14,7 +14,9 @@
 #define _DM35425_BOARD_ADC_MULTIBOARD__H_
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include "dm35425.h"
 #include "dm35425_board_access.h"
@@ -46,6 +48,10 @@ struct DM35425_ADCDMA_Descriptor
     size_t buf_ct; // buffer count
     int next_buf; // next buffer index
     int **local_buf[DM35425_NUM_ADC_DMA_CHANNELS]; // local buffer
+    int num_samples_taken[DM35425_NUM_ADC_DMA_CHANNELS]; // number of samples taken
+    uint32_t rate; // sampling rate
+    uint32_t actual_rate; // set sampling rate
+    bool started; 
     enum DM35425_Channel_Delay delay;
     enum DM35425_Input_Mode input_mode;
     enum DM35425_Input_Ranges range;
@@ -86,7 +92,7 @@ enum DM35425_ERROR {
     DM35425_ERROR_ACK_INTERRUPT,
     DM35425_ERROR_DMA_READ,
     DM35425_ERROR_IRQ_GET,
-    DM35425_INVALID_IRQ_NODATA,
+    DM35425_INVALID_IRQ_FD_UNREADABLE,
     DM35425_INVALID_IRQ_IO,
     DM35425_INVALID_IRQ_TIMEOUT,
     DM35425_INVALID_IRQ_SELECT,

@@ -287,6 +287,7 @@ int DM35425_ADCDMA_Configure_ADC(struct DM35425_ADCDMA_Descriptor *handle, uint3
     handle->delay = delay;
     handle->input_mode = input_mode;
     handle->range = range;
+    handle->rate = rate;
     return 0;
 }
 
@@ -397,6 +398,30 @@ int DM35425_ADC_Multiboard_RemoveISR(struct DM35425_Multiboard_Descriptor * _Non
     return 0;
 }
 
+static void *_start_adc_fcn(void *arg)
+{
+    struct DM35425_ADCDMA_Descriptor *adc = (struct DM35425_ADCDMA_Descriptor *)arg;
+    struct DM35425_Board_Descriptor *board = adc->board;
+    struct DM35425_Function_Block *fb = adc->fb;
+    adc->started = false;
+
+    int result = DM35425_Adc_Initialize(board, fb);
+    if (result != 0)
+    {
+        MULTIBRD_DBG_ERR("Board %p: Failed to initialize ADC.", board);
+        return (void *) 1;
+    }
+
+    result = DM35425_Adc_Start(board, fb);
+    if (result != 0)
+    {
+        MULTIBRD_DBG_ERR("Board %p: Failed to start ADC.", board);
+        return (void *) 1;
+    }
+    adc->started = true;
+    return NULL;
+}
+
 int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _Nonnull mbd, DM35425_Multiboard_ISR isr, void *user_data, bool block)
 {
     if (mbd == NULL)
@@ -404,16 +429,102 @@ int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _No
         errno = ENODATA;
         return -1;
     }
+    // Check if ISR is already installed
+    if (mbd->isr != NULL)
+    {
+        MULTIBRD_DBG_ERR("ISR already installed");
+        errno = EEXIST;
+        return -1;
+    }
     mbd->isr = isr;
     mbd->user_data = user_data;
+
+    pthread_t *trig_thr = (pthread_t *) malloc(sizeof(pthread_t) * mbd->num_boards);
+    if (trig_thr == NULL)
+    {
+        MULTIBRD_DBG_ERR("Failed to allocate memory for trigger threads");
+        return -1;
+    }
 
     int rc = pthread_create(&(mbd->pid), NULL, DM35425_Multiboard_WaitForIRQ, (void *) mbd);
     if (rc != 0)
     {
         MULTIBRD_DBG_ERR("Failed to create thread for multiboard ISR");
         errno = rc;
-        return -1;
+        goto clean_pthread;
     }
+    // Here we need to start the ADCs etc
+    for (int idx = 0; idx < mbd->num_boards; idx++)
+    {
+        struct DM35425_ADCDMA_Descriptor *handle = mbd->boards[idx];
+        struct DM35425_Board_Descriptor *board = mbd->boards[idx]->board;
+        struct DM35425_Function_Block *fb = mbd->boards[idx]->fb;
+        int result = 0;
+
+        for (int channel = 0; channel < DM35425_NUM_ADC_DMA_CHANNELS; channel++)
+        {
+            result = DM35425_Dma_Start(board, fb, channel);
+            if (result != 0)
+            {
+                MULTIBRD_DBG_ERR("Failed to start DMA for board %d (%p) channel %d", idx, board, channel);
+                goto errored;
+            }
+            handle->num_samples_taken[channel] = 0;
+            MULTIBRD_DBG_INFO("Started DMA for board %d (%p) channel %d", idx, board, channel);
+        }
+        
+        result = DM35425_Adc_Set_Start_Trigger(board, fb, DM35425_CLK_SRC_IMMEDIATE);
+        if (result != 0)
+        {
+            MULTIBRD_DBG_ERR("Failed to set start trigger for board %d (%p)", idx, board);
+            goto errored;
+        }
+
+        result = DM35425_Adc_Set_Stop_Trigger(board, fb, DM35425_CLK_SRC_NEVER);
+        if (result != 0)
+        {
+            MULTIBRD_DBG_ERR("Failed to set stop trigger for board %d (%p)", idx, board);
+            goto errored;
+        }
+
+        result = DM35425_Adc_Set_Sample_Rate(board, fb, handle->rate, &(handle->actual_rate));
+        if (result != 0)
+        {
+            MULTIBRD_DBG_ERR("Failed to set sample rate for board %d (%p)", idx, board);
+            goto errored;
+        }
+        MULTIBRD_DBG_INFO("Board %d (%p): Requested rate %u, achieved %u.", idx, board, handle->rate, handle->actual_rate);
+
+        // start threads to trigger the ADCs
+        rc = pthread_create(&(trig_thr[idx]), NULL, _start_adc_fcn, (void *) handle);
+        if (rc != 0)
+        {
+            MULTIBRD_DBG_ERR("Failed to trigger ADC start for board %d (%p)", idx, board);
+            errno = rc;
+            goto errored;
+        }
+    }
+    
+    // if we are here, ADC start was triggered
+    bool started = true;
+    for (int idx = 0; idx < mbd->num_boards; idx++)
+    {
+        int res = 0;
+        pthread_join(trig_thr[idx], &res);
+        if (res != 0)
+        {
+            MULTIBRD_DBG_ERR("Failed to start ADC for board %d (%p)", idx, mbd->boards[idx]->board);
+            started = false;
+        }
+    }
+
+    if (!started)
+    {
+        MULTIBRD_DBG_ERR("Failed to start ADCs");
+        goto errored;
+    }
+    // If we are here, ADCs are started. Clean up memory.
+    free(trig_thr);
 
     if (block)
     {
@@ -426,8 +537,18 @@ int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _No
         }
         mbd->pid = 0;
     }
-
     return 0;
+
+errored:
+    for (int idx = 0; idx < mbd->num_boards; idx++)
+    {
+        struct DM35425_Board_Descriptor *board = mbd->boards[idx]->board;
+        ioctl(board->file_descriptor, DM35425_IOCTL_WAKEUP);
+    }
+    pthread_join(mbd->pid, NULL);
+clean_pthread:
+    free(trig_thr);
+    return -1;
 }
 
 static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
@@ -497,6 +618,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
 
             if (mbd->done || mbd->isr == NULL) // this is set only when the thread is being closed
             {
+                MULTIBRD_DBG_INFO("Out of select: Done = %d, ISR = %p", mbd->done, mbd->isr);
                 mbd->done = 1; // ensure main loop breaks
                 mbd->isr = NULL;
                 break;
@@ -506,6 +628,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
             {
                 mbd->done = 1;
                 // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_SELECT
+                MULTIBRD_DBG_WARN("Exiting ISR thread: select returned negative [%s]", strerror(errno));
                 mbd->isr(-DM35425_INVALID_IRQ_SELECT, NULL, user_data);
                 no_error = false;
                 break;
@@ -516,7 +639,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                  * No file descriptors have data available.  Something is broken in the
                  * driver.
                  */
-
+                MULTIBRD_DBG_WARN("Exiting ISR thread: select timed out (returned 0) [%s]", strerror(errno));
                 errno = ENODATA;
                 // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_TIMEOUT
                 mbd->isr(-DM35425_INVALID_IRQ_TIMEOUT, NULL, user_data);
@@ -529,6 +652,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
             {
                 errno = EIO;
                 // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_IO
+                MULTIBRD_DBG_WARN("Exiting ISR thread: board returned exception [%s]", strerror(errno));
                 mbd->isr(-DM35425_INVALID_IRQ_IO, NULL, user_data);
                 no_error = false;
                 mbd->done = 1;
@@ -547,8 +671,9 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                  * The device file is not readable.  This means something is broken.
                  */
                 errno = ENODATA;
-                // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_NODATA
-                mbd->isr(-DM35425_INVALID_IRQ_NODATA, NULL, user_data);
+                // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_FD_UNREADABLE
+                MULTIBRD_DBG_WARN("Exiting ISR thread: board fd unreadable [%s]", strerror(errno));
+                mbd->isr(-DM35425_INVALID_IRQ_FD_UNREADABLE, NULL, user_data);
                 no_error = false;
                 mbd->done = 1;
                 break;
@@ -563,6 +688,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                     no_error = false;
                     mbd->done = 1;
                     // TODO: Call ISR to indicate error DM35425_ERROR_IRQ_GET
+                    MULTIBRD_DBG_WARN("Exiting ISR thread: ioctl INTERRUPT_GET returned error [%s]", strerror(errno));
                     mbd->isr(-DM35425_ERROR_IRQ_GET, NULL, user_data);
                     break;
                 }
@@ -572,6 +698,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                     no_error = false;
                     mbd->done = 1;
                     // TODO: Call ISR to indicate error DM35425_ERROR_DMA_READ
+                    MULTIBRD_DBG_WARN("Exiting ISR thread: DM35425_Read_Out_ADC returned error [%s]", strerror(errno));
                     mbd->isr(status, NULL, user_data);
                     break;
                 }

@@ -36,7 +36,8 @@ EXAMPLES = \
 	dm35425_adio_dma \
 	dm35425_ext_clocking \
 	dm35425_dac_dma \
-	dm35425_adio_parallel_bus
+	dm35425_adio_parallel_bus \
+	dm35425_adc_multiboard_dma \
 
 all:	$(EXAMPLES)
 
