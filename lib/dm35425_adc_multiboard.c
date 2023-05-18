@@ -1,3 +1,14 @@
+/**
+ * @file dm35425_adc_multiboard.c
+ * @author Sunip K. Mukherjee (sunipkmukherjee@gmail.com)
+ * @brief Implementation for the Multi-board ADC driver for the RTD DM35425 boards.
+ * @version 1.0
+ * @date 2023-05-18
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -10,6 +21,7 @@
 #include <time.h>
 
 #include "dm35425_adc_multiboard.h"
+#include "dm35425_board_access.h"
 #include "dm35425_ioctl.h"
 #include "dm35425_gbc_library.h"
 #include "dm35425_adc_library.h"
@@ -80,26 +92,73 @@ static inline void timespec_diff(struct timespec *a, struct timespec *b,
     }
 }
 
-static void DM35425_Convert_ADC(struct DM35425_ADCDMA_Descriptor *_Nonnull handle, float **_Nonnull voltages);
+struct _DM35425_ADCDMA_Descriptor
+{
+    struct DM35425_Board_Descriptor *board;              // board descriptor
+    struct DM35425_Function_Block *fb;                   // ADC function block
+    size_t buf_sz;                                       // buffer size in bytes
+    size_t buf_ct;                                       // buffer count
+    int next_buf;                                        // next buffer index
+    int **local_buf[DM35425_NUM_ADC_DMA_CHANNELS];       // local buffer
+    int num_samples_taken[DM35425_NUM_ADC_DMA_CHANNELS]; // number of samples taken
+    uint32_t rate;                                       // sampling rate
+    uint32_t actual_rate;                                // set sampling rate
+    bool started;                                        // acquisition started
+    enum DM35425_Channel_Delay delay;                    // channel delay
+    enum DM35425_Input_Mode input_mode;                  // input mode
+    enum DM35425_Input_Ranges range;                     // input range
+};
 
-static int DM35425_Read_Out_ADC(struct DM35425_ADCDMA_Descriptor *_Nonnull handle, struct dm35425_ioctl_interrupt_info_request int_info);
+struct _DM35425_Multiboard_Descriptor
+{
+    volatile sig_atomic_t done;              // flag to indicate thread is done
+    int num_boards;                          // number of boards
+    DM35425_Multiboard_ISR isr;              // ISR function
+    void *user_data;                         // user data
+    DM35425_ADCDMA_Descriptor **boards;      // array of board descriptors
+    struct DM35425_ADCDMA_Readout *readouts; // array of readouts
+    pthread_t pid;                           // thread id
+};
 
+/**
+ * @brief Convert ADC values to voltages
+ *
+ * @param handle Handle to ADCDMA device
+ * @param voltages Pointer to float array to store voltages
+ */
+static void DM35425_Convert_ADC(DM35425_ADCDMA_Descriptor *_Nonnull handle, float **_Nonnull voltages);
+
+/**
+ * @brief Read out ADC raw values
+ *
+ * @param handle Handle to ADCDMA device
+ * @param int_info Interrupt info from ioctl.
+ * @return int 0 on success, negative on error.
+ */
+static int DM35425_Read_Out_ADC(DM35425_ADCDMA_Descriptor *_Nonnull handle, struct dm35425_ioctl_interrupt_info_request int_info);
+
+/**
+ * @brief The thread function for the multiboard ISR
+ *
+ * @param ptr Pointer to the multiboard descriptor and user data.
+ * @return void* 0 on success, 1 on failure.
+ */
 static void *DM35425_Multiboard_WaitForIRQ(void *ptr);
 
-#define ADC_0 0
-#define DAC_0 0
-#define NOT_IGNORE_USED 0
-#define INTERRUPT_DISABLE 0
-#define ERROR_INTR_DISABLE 0
-#define INTERRUPT_ENABLE 1
-#define ERROR_INTR_ENABLE 1
-#define CHANNEL_0 0
-#define NO_CLEAR_INTERRUPT 0
-#define CLEAR_INTERRUPT 1
+#define ADC_0 0              /*!< ADC 0 */
+#define DAC_0 0              /*!< DAC 0 */
+#define NOT_IGNORE_USED 0    /*!< Do not ignore used channels */
+#define INTERRUPT_DISABLE 0  /*!< Disable interrupt */
+#define ERROR_INTR_DISABLE 0 /*!< Disable error interrupt */
+#define INTERRUPT_ENABLE 1   /*!< Enable interrupt */
+#define ERROR_INTR_ENABLE 1  /*!< Enable error interrupt */
+#define CHANNEL_0 0          /*!< Channel 0 */
+#define NO_CLEAR_INTERRUPT 0 /*!< Do not clear interrupt */
+#define CLEAR_INTERRUPT 1    /*!< Clear interrupt */
 
-int DM35425_ADCDMA_Open(int minor, struct DM35425_ADCDMA_Descriptor **handle_)
+int DM35425_ADCDMA_Open(int minor, DM35425_ADCDMA_Descriptor **handle_)
 {
-    struct DM35425_ADCDMA_Descriptor *handle = (struct DM35425_ADCDMA_Descriptor *)malloc(sizeof(struct DM35425_ADCDMA_Descriptor));
+    DM35425_ADCDMA_Descriptor *handle = (DM35425_ADCDMA_Descriptor *)malloc(sizeof(DM35425_ADCDMA_Descriptor));
     if (handle == NULL)
     {
         errno = ENOMEM;
@@ -155,7 +214,7 @@ free_handle:
     return -1;
 }
 
-int DM35425_ADCDMA_Close(struct DM35425_ADCDMA_Descriptor *handle)
+int DM35425_ADCDMA_Close(DM35425_ADCDMA_Descriptor *handle)
 {
     if (handle == NULL)
     {
@@ -189,7 +248,7 @@ int DM35425_ADCDMA_Close(struct DM35425_ADCDMA_Descriptor *handle)
     return 0;
 }
 
-int DM35425_ADCDMA_Configure_ADC(struct DM35425_ADCDMA_Descriptor *handle, uint32_t rate, size_t samples_per_buf, enum DM35425_Channel_Delay delay, enum DM35425_Input_Mode input_mode, enum DM35425_Input_Ranges range)
+int DM35425_ADCDMA_Configure_ADC(DM35425_ADCDMA_Descriptor *handle, uint32_t rate, size_t samples_per_buf, enum DM35425_Channel_Delay delay, enum DM35425_Input_Mode input_mode, enum DM35425_Input_Ranges range)
 {
     if (handle == NULL)
     {
@@ -307,7 +366,7 @@ int DM35425_ADCDMA_Configure_ADC(struct DM35425_ADCDMA_Descriptor *handle, uint3
     return 0;
 }
 
-int DM35425_ADC_Multiboard_Init(struct DM35425_Multiboard_Descriptor **_mbd, int num_boards, struct DM35425_ADCDMA_Descriptor *first_board, ...)
+int DM35425_ADC_Multiboard_Init(DM35425_Multiboard_Descriptor **_mbd, int num_boards, DM35425_ADCDMA_Descriptor *first_board, ...)
 {
     if (first_board == NULL)
     {
@@ -323,16 +382,16 @@ int DM35425_ADC_Multiboard_Init(struct DM35425_Multiboard_Descriptor **_mbd, int
     va_list args;
     va_start(args, first_board);
 
-    struct DM35425_Multiboard_Descriptor *mbd = (struct DM35425_Multiboard_Descriptor *)malloc(sizeof(struct DM35425_Multiboard_Descriptor));
+    DM35425_Multiboard_Descriptor *mbd = (DM35425_Multiboard_Descriptor *)malloc(sizeof(DM35425_Multiboard_Descriptor));
     if (mbd == NULL)
     {
         errno = ENOMEM;
         return -1;
     }
 
-    memset(mbd, 0x00, sizeof(struct DM35425_Multiboard_Descriptor)); // zero out memory
+    memset(mbd, 0x00, sizeof(DM35425_Multiboard_Descriptor)); // zero out memory
 
-    struct DM35425_ADCDMA_Descriptor **boards = (struct DM35425_ADCDMA_Descriptor **)malloc(sizeof(struct DM35425_ADCDMA_Descriptor *) * num_boards); // allocate num_boards pointers to board descriptors
+    DM35425_ADCDMA_Descriptor **boards = (DM35425_ADCDMA_Descriptor **)malloc(sizeof(DM35425_ADCDMA_Descriptor *) * num_boards); // allocate num_boards pointers to board descriptors
 
     if (boards == NULL)
     {
@@ -340,7 +399,7 @@ int DM35425_ADC_Multiboard_Init(struct DM35425_Multiboard_Descriptor **_mbd, int
         goto errored;
     }
 
-    memset(boards, 0x00, sizeof(struct DM35425_ADCDMA_Descriptor *) * num_boards); // zero out memory
+    memset(boards, 0x00, sizeof(DM35425_ADCDMA_Descriptor *) * num_boards); // zero out memory
 
     struct DM35425_ADCDMA_Readout *readouts = (struct DM35425_ADCDMA_Readout *)malloc(sizeof(struct DM35425_ADCDMA_Readout) * num_boards); // allocate num_boards readout structs
 
@@ -353,7 +412,7 @@ int DM35425_ADC_Multiboard_Init(struct DM35425_Multiboard_Descriptor **_mbd, int
     boards[0] = first_board;
     for (int i = 1; i < num_boards; i++) // itreate over and copy ptrs to each board descriptor
     {
-        struct DM35425_ADCDMA_Descriptor *board = va_arg(args, struct DM35425_ADCDMA_Descriptor *);
+        DM35425_ADCDMA_Descriptor *board = va_arg(args, DM35425_ADCDMA_Descriptor *);
         if (board == NULL)
         {
             errno = ENODATA;
@@ -380,7 +439,7 @@ errored:
     return -1;
 }
 
-int DM35425_ADC_Multiboard_Destroy(struct DM35425_Multiboard_Descriptor *mbd)
+int DM35425_ADC_Multiboard_Destroy(DM35425_Multiboard_Descriptor *mbd)
 {
     int status = DM35425_ADC_Multiboard_RemoveISR(mbd);
 
@@ -395,7 +454,7 @@ int DM35425_ADC_Multiboard_Destroy(struct DM35425_Multiboard_Descriptor *mbd)
     return 0;
 }
 
-int DM35425_ADC_Multiboard_RemoveISR(struct DM35425_Multiboard_Descriptor *_Nonnull mbd)
+int DM35425_ADC_Multiboard_RemoveISR(DM35425_Multiboard_Descriptor *mbd)
 {
     if (mbd == NULL)
     {
@@ -427,7 +486,7 @@ int DM35425_ADC_Multiboard_RemoveISR(struct DM35425_Multiboard_Descriptor *_Nonn
 
 static void *_start_adc_fcn(void *arg)
 {
-    struct DM35425_ADCDMA_Descriptor *adc = (struct DM35425_ADCDMA_Descriptor *)arg;
+    DM35425_ADCDMA_Descriptor *adc = (DM35425_ADCDMA_Descriptor *)arg;
     struct DM35425_Board_Descriptor *board = adc->board;
     struct DM35425_Function_Block *fb = adc->fb;
     adc->started = false;
@@ -449,7 +508,7 @@ static void *_start_adc_fcn(void *arg)
     return NULL;
 }
 
-int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor *_Nonnull mbd, DM35425_Multiboard_ISR isr, void *user_data, bool block)
+int DM35425_ADC_Multiboard_InstallISR(DM35425_Multiboard_Descriptor *mbd, DM35425_Multiboard_ISR isr, void *user_data, bool block)
 {
     if (mbd == NULL)
     {
@@ -486,7 +545,7 @@ int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor *_Non
     // Here we need to start the ADCs etc
     for (int idx = 0; idx < mbd->num_boards; idx++)
     {
-        struct DM35425_ADCDMA_Descriptor *handle = mbd->boards[idx];
+        DM35425_ADCDMA_Descriptor *handle = mbd->boards[idx];
         struct DM35425_Board_Descriptor *board = mbd->boards[idx]->board;
         struct DM35425_Function_Block *fb = mbd->boards[idx]->fb;
         int result = 0;
@@ -586,7 +645,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
     fd_set exception_fds;
     fd_set read_fds;
     int status;
-    struct DM35425_Multiboard_Descriptor *mbd = ptr;
+    DM35425_Multiboard_Descriptor *mbd = ptr;
     void *user_data = mbd->user_data;
 
 #if MULTIBRD_DBG_LVL >= 3
@@ -772,7 +831,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
             if (no_error)
                 avail_irq++;
         }
-        
+
         if (mbd->done || mbd->isr == NULL)
         {
             break;
@@ -824,7 +883,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
     return NULL;
 }
 
-static void DM35425_Convert_ADC(struct DM35425_ADCDMA_Descriptor *handle, float **voltages)
+static void DM35425_Convert_ADC(DM35425_ADCDMA_Descriptor *handle, float **voltages)
 {
     struct DM35425_Function_Block *fb = handle->fb;
     size_t num_samples = handle->buf_sz / sizeof(int);
@@ -839,7 +898,7 @@ static void DM35425_Convert_ADC(struct DM35425_ADCDMA_Descriptor *handle, float 
     }
 }
 
-static int DM35425_Read_Out_ADC(struct DM35425_ADCDMA_Descriptor *handle, struct dm35425_ioctl_interrupt_info_request int_info)
+static int DM35425_Read_Out_ADC(DM35425_ADCDMA_Descriptor *handle, struct dm35425_ioctl_interrupt_info_request int_info)
 {
     int result = 0;
     int buffer_full = 0;

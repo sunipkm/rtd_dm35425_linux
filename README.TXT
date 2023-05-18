@@ -145,6 +145,13 @@ Header Files
 The directory include/ contains all header files needed by the driver, example
 programs, library, and user applications.
 
+-------------
+Documentation
+-------------
+
+With doxygen and graphviz installed, execute `doxygen doxyconfig` in the root
+of this repository.
+
 
 ----------------
 Example Programs
@@ -164,6 +171,14 @@ The following files are provided in examples/:
     * Makefile
 	    Make description file for building example programs.
 
+	* dm35425_adc_multiboard_dma.c
+		This example program demonstrates the use multiple ADCs that are driven
+		at the same rate, where interrupts are handled by a single thread.
+
+		The example program as-is requires 3 boards to operate, but can be
+		minimally modified to support 1--n number of boards.
+
+		Hit CTRL-C to exit.
 
     * dm35425_adc.c
             This example program demonstrates the use of the ADC and interrupt

@@ -26,3 +26,4 @@ driver/*.mod.c
 !*.pdf
 !LICENSE*.TXT
 !README.TXT
+!doxyconfig

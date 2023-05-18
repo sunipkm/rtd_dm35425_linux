@@ -104,7 +104,7 @@ int main()
         }
     }
     // Open the ADCs
-    struct DM35425_ADCDMA_Descriptor *first_brd = NULL, *second_brd = NULL, *third_brd = NULL;
+    struct _DM35425_ADCDMA_Descriptor *first_brd = NULL, *second_brd = NULL, *third_brd = NULL;
     DM35425_ADCDMA_Open(0, &first_brd);
     DM35425_ADCDMA_Open(1, &second_brd);
     DM35425_ADCDMA_Open(2, &third_brd);
@@ -116,7 +116,7 @@ int main()
     DM35425_ADCDMA_Configure_ADC(third_brd, 10, 10,
                                  DM35425_ADC_2_FULL_SAMPLE_DELAY, DM35425_ADC_INPUT_SINGLE_ENDED, DM35425_ADC_RNG_BIPOLAR_5V);
     // Combine the boards
-    struct DM35425_Multiboard_Descriptor *mbd = NULL;
+    struct _DM35425_Multiboard_Descriptor *mbd = NULL;
     DM35425_ADC_Multiboard_Init(&mbd, NUM_BOARDS, first_brd, second_brd, third_brd);
     // Install the SIGINT handler
     signal(SIGINT, sigint_handler);

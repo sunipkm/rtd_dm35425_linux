@@ -55,4 +55,4 @@ v03.00.01 (rev D1) 05/15/2023 SKM
 
 v03.01.00 (rev E) 05/18/2023 SKM
 -----------------------------------
-- Added ADC Multi-board Readout API
+- Added ADC Multi-board Readout API.
