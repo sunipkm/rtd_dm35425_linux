@@ -1013,3 +1013,32 @@ static int DM35425_Read_Out_ADC(DM35425_ADCDMA_Descriptor *handle, struct dm3542
     }
     return DM35425_SUCCESS;
 }
+
+int DM35425_Multiboard_SetISRPriority(DM35425_Multiboard_Descriptor *handle, int priority)
+{
+	struct sched_param param;
+
+	param.sched_priority = priority;
+	if (handle->isr == NULL) {
+		errno = -EFAULT;
+		return -1;
+	}
+
+	if (getuid() != 0) {
+		return 0;
+	}
+
+	return pthread_setschedparam(handle->pid, SCHED_FIFO, &param);
+}
+
+#if (defined(__linux__ ) || defined(_POSIX_VERSION)) && defined(_GNU_SOURCE)
+int DM35425_Multiboard_SetISRAffinity(DM35425_Multiboard_Descriptor *_Nonnull handle, size_t cpusetsize,const cpu_set_t *cpuset)
+{
+    return pthread_setaffinity_np(handle->pid, cpusetsize, cpuset);
+}
+
+int DM35425_Multiboard_GetISRAffinity(DM35425_Multiboard_Descriptor *_Nonnull handle, size_t cpusetsize, cpu_set_t *cpuset)
+{
+    return pthread_getaffinity_np(handle->pid, cpusetsize, cpuset);
+}
+#endif

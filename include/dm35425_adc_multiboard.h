@@ -176,6 +176,38 @@ int DM35425_ADC_Multiboard_InstallISR(DM35425_Multiboard_Descriptor *_Nonnull mb
  */
 int DM35425_ADC_Multiboard_RemoveISR(DM35425_Multiboard_Descriptor *_Nonnull mbd);
 
+/**
+ * @brief Set the priority of the interrupt service routine for the multi-board ADCs.
+ * 
+ * @param handle Handle to the multi-board descriptor.
+ * @param priority ISR thread priority. See {@link pthread_setschedparam} for details.
+ * @return int 0 on success, non-zero on failure.
+ */
+int DM35425_Multiboard_SetISRPriority(DM35425_Multiboard_Descriptor *_Nonnull handle, int priority);
+
+#if (defined(__linux__ ) || defined(_POSIX_VERSION)) && defined(_GNU_SOURCE)
+
+/**
+ * @brief Set the CPU affinity of the interrupt service routine for the multi-board ADCs.
+ * 
+ * @param handle 
+ * @param cpusetsize 
+ * @param cpuset 
+ * @return int 
+ */
+int DM35425_Multiboard_SetISRAffinity(DM35425_Multiboard_Descriptor *_Nonnull handle, size_t cpusetsize,const cpu_set_t *cpuset);
+
+/**
+ * @brief Get the CPU affinity of the interrupt service routine for the multi-board ADCs.
+ * 
+ * @param handle 
+ * @param cpusetsize 
+ * @param cpuset 
+ * @return int 
+ */
+int DM35425_Multiboard_GetISRAffinity(DM35425_Multiboard_Descriptor *_Nonnull handle, size_t cpusetsize, cpu_set_t *cpuset);
+#endif
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus
