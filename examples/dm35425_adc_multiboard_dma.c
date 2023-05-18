@@ -13,6 +13,13 @@
 
 #include "dm35425_adc_multiboard.h"
 
+volatile sig_atomic_t done = 0;
+
+void sigint_handler(int sig)
+{
+    done = 1;
+}
+
 /**
  * @fn timespec_diff(struct timespec *, struct timespec *, struct timespec *)
  * @brief Compute the diff of two timespecs, that is a - b = result.
@@ -111,10 +118,15 @@ int main()
     // Combine the boards
     struct DM35425_Multiboard_Descriptor *mbd = NULL;
     DM35425_ADC_Multiboard_Init(&mbd, NUM_BOARDS, first_brd, second_brd, third_brd);
+    // Install the SIGINT handler
+    signal(SIGINT, sigint_handler);
     // Install the interrupt service routine and do not block
     DM35425_ADC_Multiboard_InstallISR(mbd, ISR, (void *)fp, false);
     // Wait for things to happen
-    sleep(5);
+    while (!done)
+    {
+        sleep(1);
+    }
     // Remove the ISR
     DM35425_ADC_Multiboard_RemoveISR(mbd);
     // Destroy the combined boards
