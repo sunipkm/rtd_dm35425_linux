@@ -29,10 +29,10 @@
 #endif
 
 #ifndef MULTIBRD_DBG_LVL
-#define MULTI_BRD_DBG_LVL 3
+#define MULTIBRD_DBG_LVL 3
 #endif
 
-typedef void (*DM35425_Multiboard_ISR)(int, struct DM35425_Board_Descriptor **, void *);
+typedef void (*DM35425_Multiboard_ISR)(int, float *** _Nullable, void * _Nullable);
 
 /**
  * @brief ADC DMA Descriptor (combines all necessary structures and fields to interact with ADC channels in one structure.)
@@ -48,6 +48,7 @@ struct DM35425_ADCDMA_Descriptor
     int **local_buf[DM35425_NUM_ADC_DMA_CHANNELS]; // local buffer
     enum DM35425_Channel_Delay delay;
     enum DM35425_Input_Mode input_mode;
+    enum DM35425_Input_Ranges range;
 };
 
 int DM35425_ADCDMA_Open(int minor, struct DM35425_ADCDMA_Descriptor ** _Nonnull handle);
@@ -57,16 +58,38 @@ int DM35425_ADCDMA_Close(struct DM35425_ADCDMA_Descriptor * _Nonnull handle);
 int DM35425_ADCDMA_Configure_ADC(struct DM35425_ADCDMA_Descriptor * _Nonnull handle, uint32_t rate, size_t samples_per_buf, enum DM35425_Channel_Delay delay, enum DM35425_Input_Mode input_mode, enum DM35425_Input_Ranges range);
 
 struct DM35425_Multiboard_Descriptor {
-    struct DM35425_ADCDMA_Descriptor **boards;
-    int num_boards;
-    pthread_t pid;
-    DM35425_Multiboard_ISR isr;
     volatile sig_atomic_t done;
-    unsigned int timeout_sec;
+    int num_boards;
+    DM35425_Multiboard_ISR isr;
+    void *user_data;
+    struct DM35425_ADCDMA_Descriptor **boards;
+    pthread_t pid;
 };
 
 int DM35425_ADC_Multiboard_Init(struct DM35425_Multiboard_Descriptor ** _Nonnull mbd, int num_boards, struct DM35425_ADCDMA_Descriptor * _Nonnull first_board, ...);
 
 int DM35425_ADC_Multiboard_Destroy(struct DM35425_Multiboard_Descriptor * _Nonnull mbd);
+
+int DM35425_ADC_Multiboard_InstallISR(struct DM35425_Multiboard_Descriptor * _Nonnull mbd, DM35425_Multiboard_ISR isr, void * _Nullable user_data, bool block);
+
+int DM35425_ADC_Multiboard_RemoveISR(struct DM35425_Multiboard_Descriptor * _Nonnull mbd);
+
+enum DM35425_ERROR {
+    DM35425_SUCCESS = 0,
+    DM35425_ERROR_FIND_USED_BUFFER,
+    DM35425_ERROR_BUFFER_NOT_FULL,
+    DM35425_ERROR_CHECK_DMA_ERROR,
+    DM35425_ERROR_CHANNEL_DMA_ERROR,
+    DM35425_ERROR_READ_DMA_BUFFER,
+    DM35425_ERROR_RESET_DMA_BUFFER,
+    DM35425_ERROR_CLEAR_DMA_INTERRUPT,
+    DM35425_ERROR_ACK_INTERRUPT,
+    DM35425_ERROR_DMA_READ,
+    DM35425_ERROR_IRQ_GET,
+    DM35425_INVALID_IRQ_NODATA,
+    DM35425_INVALID_IRQ_IO,
+    DM35425_INVALID_IRQ_TIMEOUT,
+    DM35425_INVALID_IRQ_SELECT,
+};
 
 #endif // _DM35425_BOARD_ADC_MULTIBOARD__H_

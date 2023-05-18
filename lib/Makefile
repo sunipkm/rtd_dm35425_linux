@@ -32,7 +32,8 @@ LIB_FILES:= \
 	librtd-dm35425_adc.o \
 	librtd-dm35425_dac.o \
 	dm35425_board_access.o \
-	dm35425_os.o
+	dm35425_os.o \
+	dm35425_adc_multiboard.o
 
 
 all:			librtd-dm35425.a
