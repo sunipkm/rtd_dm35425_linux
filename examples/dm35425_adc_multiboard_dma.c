@@ -9,8 +9,26 @@
 #include <limits.h>
 #include <getopt.h>
 #include <string.h>
+#include <time.h>
 
 #include "dm35425_adc_multiboard.h"
+
+/**
+ * @fn timespec_diff(struct timespec *, struct timespec *, struct timespec *)
+ * @brief Compute the diff of two timespecs, that is a - b = result.
+ * @param a the minuend
+ * @param b the subtrahend
+ * @param result a - b
+ */
+static inline void timespec_diff(struct timespec *a, struct timespec *b,
+    struct timespec *result) {
+    result->tv_sec  = a->tv_sec  - b->tv_sec;
+    result->tv_nsec = a->tv_nsec - b->tv_nsec;
+    if (result->tv_nsec < 0) {
+        --result->tv_sec;
+        result->tv_nsec += 1000000000L;
+    }
+}
 
 /**
  * @brief Interrupt service routine for the ADCs. This function is called every time the ADCs have a full buffer of data.
@@ -22,7 +40,9 @@
 void ISR(int num_boards, struct DM35425_ADCDMA_Readout *readouts, void *user_data)
 {
     static int call_ct = 0;
+    static struct timespec lstart, last, now, diff;
     FILE **fp = (FILE **)user_data;
+    clock_gettime(CLOCK_MONOTONIC, &now); // get time now
     if (num_boards <= 0)
     {
         printf("Error: ISR called with error %d\n", num_boards);
@@ -38,8 +58,20 @@ void ISR(int num_boards, struct DM35425_ADCDMA_Readout *readouts, void *user_dat
             }
         }
     }
+    if (call_ct)
+    {
+        timespec_diff(&now, &last, &diff);
+        printf("Callback (%d): %lu.%09lu s since last, ", call_ct + 1, diff.tv_sec, diff.tv_nsec);
+        timespec_diff(&now, &lstart, &diff);
+        printf("%lu.%09lu s since start\n", diff.tv_sec, diff.tv_nsec);
+        last = now;
+    }
+    else
+    {
+        lstart = now;
+        printf("Callback (0): 0.0 s\n");
+    }
     call_ct++;
-    printf("Callback called %d times\n", call_ct);
 }
 
 #define NUM_BOARDS 3
