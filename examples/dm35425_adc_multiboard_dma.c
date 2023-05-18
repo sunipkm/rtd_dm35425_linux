@@ -61,7 +61,7 @@ void ISR(int num_boards, struct DM35425_ADCDMA_Readout *readouts, void *user_dat
     if (call_ct)
     {
         timespec_diff(&now, &last, &diff);
-        printf("Callback (%d): %lu.%09lu s since last, ", call_ct + 1, diff.tv_sec, diff.tv_nsec);
+        printf("Callback (%d): %lu.%09lu s since last, ", call_ct, diff.tv_sec, diff.tv_nsec);
         timespec_diff(&now, &lstart, &diff);
         printf("%lu.%09lu s since start\n", diff.tv_sec, diff.tv_nsec);
         last = now;
@@ -70,7 +70,7 @@ void ISR(int num_boards, struct DM35425_ADCDMA_Readout *readouts, void *user_dat
     {
         lstart = now;
         last = now;
-        printf("Callback (1): 0.0 s\n");
+        printf("Callback (0): 0.0 s\n");
     }
     call_ct++;
 }
