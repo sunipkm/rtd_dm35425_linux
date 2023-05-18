@@ -127,6 +127,7 @@ int main()
     {
         sleep(1);
     }
+    printf("Received SIGINT, exiting...\n");
     // Remove the ISR
     DM35425_ADC_Multiboard_RemoveISR(mbd);
     // Destroy the combined boards
