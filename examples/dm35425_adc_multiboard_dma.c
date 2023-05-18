@@ -39,6 +39,7 @@ void ISR(int num_boards, struct DM35425_ADCDMA_Readout *readouts, void *user_dat
         }
     }
     call_ct++;
+    printf("Callback called %d times\n", call_ct);
 }
 
 #define NUM_BOARDS 3
