@@ -46,7 +46,7 @@ extern "C" {
  * @brief Debug level for multiboard functions. 0 = no debug, 1 = errors only, 2 = errors and warnings, 3 = errors, warnings, and info.
  *
  */
-#define MULTIBRD_DBG_LVL 1
+#define MULTIBRD_DBG_LVL 2
 #endif
 
 /**

@@ -59,8 +59,20 @@
         fprintf(stderr, "%s:%d:%s(): " YELLOW_FG fmt "\n" RESET, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
         fflush(stderr);                                                                                        \
     }
+#define MULTIBRD_DBG_WARN_NONL(fmt, ...)                                                  \
+    {                                                                                     \
+        fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
+        fflush(stderr);                                                                   \
+    }
+#define MULTIBRD_DBG_WARN_NONE(fmt, ...)     \
+    {                                        \
+        fprintf(stderr, fmt, ##__VA_ARGS__); \
+        fflush(stderr);                      \
+    }
 #else
 #define MULTIBRD_DBG_WARN(fmt, ...)
+#define MULTIBRD_DBG_WARN_NONL(fmt, ...)
+#define MULTIBRD_DBG_WARN_NONE(fmt, ...)
 #endif
 
 #if (MULTIBRD_DBG_LVL >= 1)
@@ -715,7 +727,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
     while (!mbd->done)
     {
         bool no_error = true; // assume no error
-        int avail_irq = 0; // assume no available IRQs
+        int avail_irq = 0;    // assume no available IRQs
         union dm35425_ioctl_argument ioctl_arg;
 
 #if MULTIBRD_DBG_LVL >= 3
@@ -825,13 +837,19 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
                 /*
                  * This board has no data available, skip it.
                  */
+                MULTIBRD_DBG_WARN("Board %d has no available data:", i);
+                for (int j = 0; j < num_boards; j++)
+                {
+                    MULTIBRD_DBG_WARN_NONE(" %d", irqs[j]);
+                }
+                MULTIBRD_DBG_WARN_NONE("\n");
                 continue;
             }
             irqs[i] = 1; // if here, interrupt has triggered for this board
 #if MULTIBRD_DBG_LVL >= 3
             struct timespec tv_s;
             clock_gettime(CLOCK_MONOTONIC, &tv_s);
-#endif         // MULTIBRD_DBG_LVL >= 3
+#endif // MULTIBRD_DBG_LVL >= 3
 
             do // exhaust all available IRQs for this board
             {
