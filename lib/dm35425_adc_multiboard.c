@@ -4,9 +4,9 @@
  * @brief Implementation for the Multi-board ADC driver for the RTD DM35425 boards.
  * @version 1.0
  * @date 2023-05-18
- * 
+ *
  * @copyright Copyright (c) 2023
- * 
+ *
  */
 
 #include <stdio.h>
@@ -642,11 +642,21 @@ clean_pthread:
 
 static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
 {
+    /*
+     * Set up
+     */
     fd_set exception_fds;
     fd_set read_fds;
     int status;
     DM35425_Multiboard_Descriptor *mbd = ptr;
+    if (mbd == NULL)
+    {
+        MULTIBRD_DBG_ERR("Invalid multiboard descriptor");
+        errno = EINVAL;
+        return NULL;
+    }
     void *user_data = mbd->user_data;
+    int num_boards = mbd->num_boards;
 
 #if MULTIBRD_DBG_LVL >= 3
     static int isr_call_count = 0;
@@ -656,14 +666,27 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
     struct timespec delta;
 #endif // MULTIBRD_DBG_LVL >= 3
 
-    float ***voltages = (float ***)malloc(sizeof(float *) * mbd->num_boards);
+    int *irqs = (int *)malloc(sizeof(int) * num_boards);
+    if (irqs == NULL)
+    {
+        MULTIBRD_DBG_ERR("Failed to allocate memory for irqs");
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    for (int i = 0; i < num_boards; i++)
+    {
+        irqs[i] = 0; // interrupt has not triggered yet
+    }
+
+    float ***voltages = (float ***)malloc(sizeof(float *) * num_boards);
     if (voltages == NULL)
     {
         MULTIBRD_DBG_ERR("Failed to allocate memory for voltages");
         errno = ENOMEM;
         return NULL;
     }
-    for (int i = 0; i < mbd->num_boards; i++)
+    for (int i = 0; i < num_boards; i++)
     {
         voltages[i] = (float **)malloc(sizeof(float *) * DM35425_NUM_ADC_DMA_CHANNELS);
         if (voltages[i] == NULL)
@@ -688,10 +711,12 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
         mbd->readouts[i].voltages = voltages[i];
     }
 
+    /* Main event loop */
     while (!mbd->done)
     {
-        bool no_error = true;
-        int avail_irq = 0;
+        bool no_error = true; // assume no error
+        int avail_irq = 0; // assume no available IRQs
+        union dm35425_ioctl_argument ioctl_arg;
 
 #if MULTIBRD_DBG_LVL >= 3
         clock_gettime(CLOCK_MONOTONIC, &start);
@@ -706,65 +731,79 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
             MULTIBRD_DBG_INFO_NONE("\n");
             MULTIBRD_DBG_INFO("DMA waiting to select (%d): %ld.%09ld s (since first)\n", isr_call_count, delta.tv_sec, delta.tv_nsec);
         }
+        MULTIBRD_DBG_INFO_NONL("IRQ Status:")
+        for (int i = 0; i < num_boards; i++)
+        {
+            MULTIBRD_DBG_INFO_NONE(" %d", irqs[i]);
+        }
+        MULTIBRD_DBG_INFO_NONE("\n");
 #endif // MULTIBRD_DBG_LVL >= 3
 
-        for (int i = 0; i < mbd->num_boards && !mbd->done; i++)
+        /*
+         * Set up the set of file descriptors that will be watched for input
+         * activity.  Only the DM35425 device file descriptor is of interest.
+         */
+        FD_ZERO(&read_fds);
+        FD_ZERO(&exception_fds);
+        for (int j = 0; j < num_boards; j++) // set up monitoring for boards without IRQ
         {
-            union dm35425_ioctl_argument ioctl_arg;
-            /*
-             * Set up the set of file descriptors that will be watched for input
-             * activity.  Only the DM35425 device file descriptor is of interest.
-             */
-
-            FD_ZERO(&read_fds);
-            FD_ZERO(&exception_fds);
-            for (int j = 0; j < mbd->num_boards; j++)
+            if (!irqs[j]) // irq has not triggered yet for this board
             {
                 FD_SET(mbd->boards[j]->board->file_descriptor, &read_fds);
                 FD_SET(mbd->boards[j]->board->file_descriptor, &exception_fds);
             }
+            else // irq has already triggered for this board
+            {
+                avail_irq++; // count the number of available IRQs
+            }
+        }
 
+        /*
+         * Set up the set of file descriptors that will be watched for exception
+         * activity.  Only the DM35425 file descriptor is of interest.
+         */
+
+        status = select(FD_SETSIZE,
+                        &read_fds, NULL, &exception_fds, NULL);
+
+        if (mbd->done || mbd->isr == NULL) // this is set only when the thread is being closed
+        {
+            MULTIBRD_DBG_INFO("Out of select: Done = %d, ISR = %p", mbd->done, mbd->isr);
+            mbd->done = 1; // ensure main loop breaks
+            mbd->isr = NULL;
+            break;
+        }
+
+        if (status < 0) // select failed
+        {
+            mbd->done = 1;
+            // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_SELECT
+            MULTIBRD_DBG_WARN("Exiting ISR thread: select returned negative [%s]", strerror(errno));
+            mbd->isr(-DM35425_INVALID_IRQ_SELECT, NULL, user_data);
+            no_error = false;
+            break;
+        }
+        else if (status == 0) // select timed out?
+        {
             /*
-             * Set up the set of file descriptors that will be watched for exception
-             * activity.  Only the DM35425 file descriptor is of interest.
+             * No file descriptors have data available.  Something is broken in the
+             * driver.
              */
+            MULTIBRD_DBG_WARN("Exiting ISR thread: select timed out (returned 0) [%s]", strerror(errno));
+            errno = ENODATA;
+            // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_TIMEOUT
+            mbd->isr(-DM35425_INVALID_IRQ_TIMEOUT, NULL, user_data);
+            no_error = false;
+            mbd->done = 1;
+            break;
+        }
 
-            status = select(FD_SETSIZE,
-                            &read_fds, NULL, &exception_fds, NULL);
+        for (int i = 0; i < num_boards && !mbd->done; i++) // for each board
+        {
+            if (irqs[i]) // if this is set, this board has already been read from
+                continue;
 
-            if (mbd->done || mbd->isr == NULL) // this is set only when the thread is being closed
-            {
-                MULTIBRD_DBG_INFO("Out of select: Done = %d, ISR = %p", mbd->done, mbd->isr);
-                mbd->done = 1; // ensure main loop breaks
-                mbd->isr = NULL;
-                break;
-            }
-
-            if (status < 0) // select failed
-            {
-                mbd->done = 1;
-                // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_SELECT
-                MULTIBRD_DBG_WARN("Exiting ISR thread: select returned negative [%s]", strerror(errno));
-                mbd->isr(-DM35425_INVALID_IRQ_SELECT, NULL, user_data);
-                no_error = false;
-                break;
-            }
-            else if (status == 0) // select timed out?
-            {
-                /*
-                 * No file descriptors have data available.  Something is broken in the
-                 * driver.
-                 */
-                MULTIBRD_DBG_WARN("Exiting ISR thread: select timed out (returned 0) [%s]", strerror(errno));
-                errno = ENODATA;
-                // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_TIMEOUT
-                mbd->isr(-DM35425_INVALID_IRQ_TIMEOUT, NULL, user_data);
-                no_error = false;
-                mbd->done = 1;
-                break;
-            }
-
-            if (FD_ISSET(mbd->boards[i]->board->file_descriptor, &exception_fds))
+            if (FD_ISSET(mbd->boards[i]->board->file_descriptor, &exception_fds)) // if any board returns an exception it is an automatic disqualification
             {
                 errno = EIO;
                 // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_IO
@@ -784,21 +823,17 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
             {
 
                 /*
-                 * The device file is not readable.  This means something is broken.
+                 * This board has no data available, skip it.
                  */
-                errno = ENODATA;
-                // TODO: Call ISR to indicate error DM35425_INVALID_IRQ_FD_UNREADABLE
-                MULTIBRD_DBG_WARN("Exiting ISR thread: board fd unreadable [%s]", strerror(errno));
-                mbd->isr(-DM35425_INVALID_IRQ_FD_UNREADABLE, NULL, user_data);
-                no_error = false;
-                mbd->done = 1;
-                break;
+                continue;
             }
+            irqs[i] = 1; // if here, interrupt has triggered for this board
 #if MULTIBRD_DBG_LVL >= 3
             struct timespec tv_s;
             clock_gettime(CLOCK_MONOTONIC, &tv_s);
 #endif         // MULTIBRD_DBG_LVL >= 3
-            do // exhaust all available IRQs
+
+            do // exhaust all available IRQs for this board
             {
                 status = ioctl(mbd->boards[i]->board->file_descriptor, DM35425_IOCTL_INTERRUPT_GET,
                                &ioctl_arg); // get interrupt info, should have something now
@@ -837,12 +872,15 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
             break;
         }
 
-        if (avail_irq != mbd->num_boards && !no_error) // back to top of loop if we don't have all the devices ready, this way the slowest device triggers the ISR
+        if ((avail_irq != num_boards) && no_error) // back to top of loop if we don't have all the devices ready, this way the slowest device triggers the ISR
         {
+            MULTIBRD_DBG_INFO("DMA waiting for all devices to trigger ISR (%d/%d)", avail_irq, num_boards);
             continue;
         }
+        // if here, we can clear the IRQ monitor to reset the select
+        memset(irqs, 0x0, sizeof(int) * num_boards);
         // Now we have interrupts from all devices ISR can be called after voltage conversion
-        for (int i = 0; i < mbd->num_boards; i++)
+        for (int i = 0; i < num_boards; i++)
         {
             DM35425_Convert_ADC(mbd->boards[i], voltages[i]);
         }
@@ -862,7 +900,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
        // TODO: Call ISR
         if (mbd->isr != NULL)
         {
-            mbd->isr(mbd->num_boards, mbd->readouts, user_data);
+            mbd->isr(num_boards, mbd->readouts, user_data);
         }
         else
         {
@@ -870,7 +908,7 @@ static void *DM35425_Multiboard_WaitForIRQ(void *ptr)
         }
     }
 
-    for (int i = 0; i < mbd->num_boards; i++)
+    for (int i = 0; i < num_boards; i++)
     {
         for (int j = 0; j < DM35425_NUM_ADC_DMA_CHANNELS; j++)
         {
@@ -1016,23 +1054,25 @@ static int DM35425_Read_Out_ADC(DM35425_ADCDMA_Descriptor *handle, struct dm3542
 
 int DM35425_Multiboard_SetISRPriority(DM35425_Multiboard_Descriptor *handle, int priority)
 {
-	struct sched_param param;
+    struct sched_param param;
 
-	param.sched_priority = priority;
-	if (handle->isr == NULL) {
-		errno = -EFAULT;
-		return -1;
-	}
+    param.sched_priority = priority;
+    if (handle->isr == NULL)
+    {
+        errno = -EFAULT;
+        return -1;
+    }
 
-	if (getuid() != 0) {
-		return 0;
-	}
+    if (getuid() != 0)
+    {
+        return 0;
+    }
 
-	return pthread_setschedparam(handle->pid, SCHED_FIFO, &param);
+    return pthread_setschedparam(handle->pid, SCHED_FIFO, &param);
 }
 
-#if (defined(__linux__ ) || defined(_POSIX_VERSION)) && defined(_GNU_SOURCE)
-int DM35425_Multiboard_SetISRAffinity(DM35425_Multiboard_Descriptor *_Nonnull handle, size_t cpusetsize,const cpu_set_t *cpuset)
+#if (defined(__linux__) || defined(_POSIX_VERSION)) && defined(_GNU_SOURCE)
+int DM35425_Multiboard_SetISRAffinity(DM35425_Multiboard_Descriptor *_Nonnull handle, size_t cpusetsize, const cpu_set_t *cpuset)
 {
     return pthread_setaffinity_np(handle->pid, cpusetsize, cpuset);
 }
